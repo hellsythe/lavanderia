@@ -3,17 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "description": "Componentes UI con design system LavanderPro",
-  "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
+    ".": "./dist/index.js",
     "./styles": "./src/styles/globals.css",
     "./styles.css": "./src/styles/globals.css",
     "./tailwind-preset": "./tailwind-preset.cjs",
     "./tailwind-preset.cjs": "./tailwind-preset.cjs"
   },
   "scripts": {
+    "build": "tsc",
     "lint": "biome check .",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf .turbo dist"
