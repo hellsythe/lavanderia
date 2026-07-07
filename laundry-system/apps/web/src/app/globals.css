@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Brand palette */
+    --bg: #f0f4f8;
+    --surface: #ffffff;
+    --surface-2: #f8fafc;
+    --fg: #1a2332;
+    --muted: #64748b;
+    --border: #e1e8f0;
+    --accent: #0f766e;
+    --accent-soft: #ccfbf1;
+    --accent-fg: #ffffff;
+
+    /* Semantic palette */
+    --success: #059669;
+    --success-soft: #d1fae5;
+    --warning: #b45309;
+    --warning-soft: #fef3c7;
+    --danger: #dc2626;
+    --danger-soft: #fee2e2;
+    --info: #2563eb;
+    --info-soft: #dbeafe;
+    --purple: #7c3aed;
+    --purple-soft: #ede9fe;
+
+    /* Layout dimensions */
+    --sidebar-w: 256px;
+    --topbar-h: 56px;
+    --radius: 10px;
+
+    /* Typography */
+    --font-sans: 'Public Sans', system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial,
+      sans-serif;
+    --font-mono: ui-monospace, 'Cascadia Code', Menlo, monospace;
+
+    color-scheme: light;
+  }
+
+  html {
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  .num,
+  [data-tabular] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  .skip-link {
+    position: absolute;
+    top: -100%;
+    left: 8px;
+    background: var(--accent);
+    color: var(--accent-fg);
+    padding: 8px 12px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 700;
+    z-index: 9999;
+    transition: top 120ms ease;
+  }
+  .skip-link:focus {
+    top: 8px;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--muted);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .label-caps {
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    font-weight: 700;
+    font-size: 10px;
+    line-height: 1.2;
+    color: var(--muted);
+  }
+
+  .press {
+    transition: transform 120ms ease;
+  }
+  .press:active {
+    transform: translateY(1px);
+  }
+}

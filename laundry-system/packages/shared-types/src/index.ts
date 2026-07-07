@@ -1,0 +1,267 @@
+import { z } from 'zod';
+
+/* =========================================================================
+ * Common primitives
+ * ========================================================================= */
+
+export const UuidSchema = z.string().uuid();
+export const TenantIdSchema = UuidSchema;
+export const UserIdSchema = UuidSchema;
+
+export const TimestampSchema = z.number().int().nonnegative();
+
+/* =========================================================================
+ * Tenant (Lavandería SaaS cliente)
+ * ========================================================================= */
+
+export const TenantPlanSchema = z.enum(['trial', 'starter', 'pro', 'enterprise']);
+export type TenantPlan = z.infer<typeof TenantPlanSchema>;
+
+export const TenantSchema = z.object({
+  id: TenantIdSchema,
+  name: z.string().min(1).max(100),
+  slug: z
+    .string()
+    .min(2)
+    .max(40)
+    .regex(/^[a-z0-9-]+$/),
+  plan: TenantPlanSchema,
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+});
+export type Tenant = z.infer<typeof TenantSchema>;
+
+/* =========================================================================
+ * User
+ * ========================================================================= */
+
+export const UserRoleSchema = z.enum([
+  'super_admin', // SaaS owner
+  'tenant_admin', // dueño lavandería
+  'operator', // cajero
+  'delivery', // domiciliario (futuro)
+]);
+export type UserRole = z.infer<typeof UserRoleSchema>;
+
+export const UserSchema = z.object({
+  id: UserIdSchema,
+  tenantId: TenantIdSchema,
+  email: z.string().email(),
+  name: z.string().min(1).max(100),
+  role: UserRoleSchema,
+  active: z.boolean().default(true),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+});
+export type User = z.infer<typeof UserSchema>;
+
+/* =========================================================================
+ * Customer (cliente final de la lavandería)
+ * ========================================================================= */
+
+export const CustomerSchema = z.object({
+  id: UuidSchema,
+  tenantId: TenantIdSchema,
+  name: z.string().min(1).max(120),
+  phone: z.string().max(30).optional(),
+  email: z.string().email().optional(),
+  address: z.string().max(200).optional(),
+  notes: z.string().max(500).optional(),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+});
+export type Customer = z.infer<typeof CustomerSchema>;
+
+/* =========================================================================
+ * Service (catálogo de servicios: lavar, planchar, etc.)
+ * ========================================================================= */
+
+export const ServiceUnitSchema = z.enum(['kg', 'piece']);
+export type ServiceUnit = z.infer<typeof ServiceUnitSchema>;
+
+export const ServiceSchema = z.object({
+  id: UuidSchema,
+  tenantId: TenantIdSchema,
+  categoryId: UuidSchema.optional(),
+  name: z.string().min(1).max(80),
+  description: z.string().max(300).optional(),
+  unit: ServiceUnitSchema,
+  unitPrice: z.number().nonnegative(),
+  active: z.boolean().default(true),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+});
+export type Service = z.infer<typeof ServiceSchema>;
+
+export const ServiceCategorySchema = z.object({
+  id: UuidSchema,
+  tenantId: TenantIdSchema,
+  name: z.string().min(1).max(60),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+});
+export type ServiceCategory = z.infer<typeof ServiceCategorySchema>;
+
+/* =========================================================================
+ * Order (pedido / orden)
+ * ========================================================================= */
+
+export const OrderStatusSchema = z.enum([
+  'received', // recibido
+  'in_process', // en proceso
+  'ready', // listo
+  'delivered', // entregado
+  'cancelled', // cancelado
+]);
+export type OrderStatus = z.infer<typeof OrderStatusSchema>;
+
+export const OrderItemSchema = z.object({
+  id: UuidSchema,
+  orderId: UuidSchema,
+  serviceId: UuidSchema,
+  serviceName: z.string(), // denormalizado para offline + tickets
+  unit: ServiceUnitSchema,
+  quantity: z.number().positive(),
+  unitPrice: z.number().nonnegative(),
+  subtotal: z.number().nonnegative(),
+  notes: z.string().max(200).optional(),
+});
+export type OrderItem = z.infer<typeof OrderItemSchema>;
+
+export const OrderSchema = z.object({
+  id: UuidSchema,
+  tenantId: TenantIdSchema,
+  code: z.string().regex(/^ORD-\d{4,}$/), // ORD-0001
+  customerId: UuidSchema,
+  customerName: z.string(), // denormalizado
+  status: OrderStatusSchema,
+  total: z.number().nonnegative(),
+  paid: z.number().nonnegative().default(0),
+  balance: z.number().nonnegative().default(0),
+  estimatedDeliveryAt: TimestampSchema.optional(),
+  deliveredAt: TimestampSchema.optional(),
+  notes: z.string().max(500).optional(),
+  items: z.array(OrderItemSchema).default([]),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+});
+export type Order = z.infer<typeof OrderSchema>;
+
+/* =========================================================================
+ * Payment
+ * ========================================================================= */
+
+export const PaymentMethodSchema = z.enum(['cash', 'card', 'transfer', 'other']);
+export type PaymentMethod = z.infer<typeof PaymentMethodSchema>;
+
+export const PaymentSchema = z.object({
+  id: UuidSchema,
+  tenantId: TenantIdSchema,
+  orderId: UuidSchema,
+  method: PaymentMethodSchema,
+  amount: z.number().positive(),
+  reference: z.string().max(80).optional(),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+});
+export type Payment = z.infer<typeof PaymentSchema>;
+
+/* =========================================================================
+ * Auth
+ * ========================================================================= */
+
+export const LoginInputSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+});
+export type LoginInput = z.infer<typeof LoginInputSchema>;
+
+export const RegisterInputSchema = z.object({
+  tenantName: z.string().min(2).max(100),
+  name: z.string().min(2).max(100),
+  email: z.string().email(),
+  password: z.string().min(8),
+});
+export type RegisterInput = z.infer<typeof RegisterInputSchema>;
+
+export const AuthResponseSchema = z.object({
+  accessToken: z.string(),
+  refreshToken: z.string(),
+  user: UserSchema,
+  tenant: TenantSchema,
+});
+export type AuthResponse = z.infer<typeof AuthResponseSchema>;
+
+/* =========================================================================
+ * Sync (offline-first operation log)
+ * ========================================================================= */
+
+export const SyncOpTypeSchema = z.enum(['create', 'update', 'delete']);
+export type SyncOpType = z.infer<typeof SyncOpTypeSchema>;
+
+export const SyncEntityTypeSchema = z.enum([
+  'customer',
+  'service',
+  'service_category',
+  'order',
+  'payment',
+]);
+export type SyncEntityType = z.infer<typeof SyncEntityTypeSchema>;
+
+export const SyncOperationSchema = z.object({
+  uuid: z.string(), // UUID v7 generado en cliente
+  entity: SyncEntityTypeSchema,
+  entityId: UuidSchema,
+  op: SyncOpTypeSchema,
+  payload: z.record(z.unknown()), // datos del registro
+  timestamp: TimestampSchema,
+});
+export type SyncOperation = z.infer<typeof SyncOperationSchema>;
+
+export const SyncPushBatchSchema = z.object({
+  operations: z.array(SyncOperationSchema).max(500),
+});
+export type SyncPushBatch = z.infer<typeof SyncPushBatchSchema>;
+
+export const SyncPullRequestSchema = z.object({
+  since: TimestampSchema.optional(),
+});
+export type SyncPullRequest = z.infer<typeof SyncPullRequestSchema>;
+
+export const SyncChangeSchema = z.object({
+  entity: SyncEntityTypeSchema,
+  entityId: UuidSchema,
+  op: SyncOpTypeSchema,
+  payload: z.record(z.unknown()),
+  updatedAt: TimestampSchema,
+  tombstone: z.boolean().default(false),
+});
+export type SyncChange = z.infer<typeof SyncChangeSchema>;
+
+export const SyncPullResponseSchema = z.object({
+  changes: z.array(SyncChangeSchema),
+  serverTime: TimestampSchema,
+});
+export type SyncPullResponse = z.infer<typeof SyncPullResponseSchema>;
+
+/* =========================================================================
+ * POS — Crear pedido desde el POS
+ * ========================================================================= */
+
+export const CreateOrderItemInputSchema = z.object({
+  serviceId: UuidSchema,
+  quantity: z.number().positive(),
+  notes: z.string().max(200).optional(),
+});
+export type CreateOrderItemInput = z.infer<typeof CreateOrderItemInputSchema>;
+
+export const CreateOrderInputSchema = z.object({
+  customerId: UuidSchema.optional(),
+  customerName: z.string().min(1).max(120).optional(),
+  customerPhone: z.string().max(30).optional(),
+  isNewCustomer: z.boolean().default(false),
+  items: z.array(CreateOrderItemInputSchema).min(1),
+  estimatedDeliveryAt: TimestampSchema.optional(),
+  notes: z.string().max(500).optional(),
+});
+export type CreateOrderInput = z.infer<typeof CreateOrderInputSchema>;

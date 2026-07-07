@@ -1,0 +1,14 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+allowBuilds:
+  '@biomejs/biome': set this to true or false
+  '@nestjs/core': set this to true or false
+  unrs-resolver: set this to true or false
+
+onlyBuiltDependencies:
+  - '@biomejs/biome'
+  - '@nestjs/core'
+  - 'esbuild'
+  - 'unrs-resolver'
