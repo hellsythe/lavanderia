@@ -3,16 +3,39 @@
 Coolify es un PaaS self-hosted (alternativa a Vercel/Netlify). Este repo está
 preparado para deployarse con el **menor footprint posible**:
 
-| Recurso Coolify | Tipo | Imagen / Build |
-|---|---|---|
-| **PostgreSQL** | Coolify-managed (ya existe) | — |
-| **Redis** | Coolify-managed (ya existe) | — |
-| **API** | Docker Compose (1 container) | `apps/api/Dockerfile` |
-| **Web** | Static Site (**0 containers**) | `nixpacks.toml` → `apps/web/out/` |
+| Recurso Coolify | Tipo | Imagen / Build | Parte del repo que usa |
+|---|---|---|---|
+| **PostgreSQL** | Coolify-managed (ya existe) | — | — (servicio gestionado) |
+| **Redis** | Coolify-managed (ya existe) | — | — (servicio gestionado) |
+| **API** | Docker Compose (1 container) | `apps/api/Dockerfile` | `docker-compose.coolify.yml` |
+| **Web** | Static Site (**0 containers**) | `nixpacks.toml` → `apps/web/out/` | `nixpacks.toml` |
 
 > ⚠️ **Asumimos que ya tienes PostgreSQL y Redis en Coolify.** Si no, ver
 > `docker-compose.full-stack.yml` (incluye todo el stack) — alternativa menos
 > eficiente pero autocontenida.
+
+## ¿Un repo o varios?
+
+**Un solo repo para todos los recursos.** El repo se conecta a múltiples
+recursos de Coolify (api + web), cada uno usando una parte distinta:
+
+- **API** → `docker-compose.coolify.yml` (que referencia `apps/api/Dockerfile`)
+- **Web** → `nixpacks.toml` (en la raíz, instruye a Nixpacks)
+
+```
+GitHub repo (lavander-system)
+   ├─ Coolify resource: lavanderpro-api    → uses apps/api/Dockerfile
+   ├─ Coolify resource: lavanderpro-web    → uses nixpacks.toml
+   └─ Coolify resource: postgres           → Coolify-managed (no usa el repo)
+```
+
+Coolify hace `git clone` por cada recurso. Para un repo de pocos MB es
+instantáneo. Si crece, asegúrate de que `.gitignore` excluya `node_modules`,
+`dist/`, `.next/`, `.turbo/`.
+
+**Para staging / producción separados** (cuando el equipo crezca):
+- Branch `develop` → recursos `-staging`
+- Tag `v*.*.*` → recursos `-prod`
 
 ---
 

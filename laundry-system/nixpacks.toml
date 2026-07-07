@@ -15,8 +15,9 @@
 #   6. Environment variables: NEXT_PUBLIC_API_URL=https://api.tu-dominio.com/api
 
 [phases.setup]
-# Versiones de Node + pnpm instaladas en el build container
-nixPkgs = ["nodejs-22_x", "pnpm"]
+# Nixpacks detecta pnpm automáticamente desde el campo `packageManager` de
+# package.json ("pnpm@11.10.0"). Solo necesitamos Node.
+nixPkgs = ["nodejs-22_x"]
 
 [phases.install]
 # pnpm install con build scripts habilitados
@@ -33,6 +34,5 @@ cmds = [
   "cd apps/web && pnpm run build",
 ]
 
-[start]
-# Static site no necesita start command — Coolify sirve los archivos directamente
-cmds = ["echo 'Static build complete'"]
+# NO incluir [start]: Coolify sirve archivos estáticos directamente,
+# no necesita arrancar un proceso.
