@@ -1,10 +1,7 @@
 # nixpacks.toml — Coolify Static Site build config
 #
 # Coolify corre este archivo cuando deployas el frontend como Static Site
-# (sin contenedor nginx). Define:
-#   - Versión de Node y pnpm
-#   - Comando de build
-#   - Directorio de salida (lo que Coolify sirve)
+# (sin contenedor nginx).
 #
 # Setup en Coolify:
 #   1. New Resource → Static Site
@@ -14,13 +11,18 @@
 #   5. Publish directory: apps/web/out (igual)
 #   6. Environment variables: NEXT_PUBLIC_API_URL=https://api.tu-dominio.com/api
 
+# Pin Node version — Nixpacks lo lee de aquí. Esto evita problemas con
+# nombres de paquetes que cambian entre versiones de Nixpkgs (e.g.
+# `nodejs-22_x` puede no existir en una versión nueva).
+[variables]
+NODE_VERSION = "22"
+
 [phases.setup]
-# Nixpacks detecta pnpm automáticamente desde el campo `packageManager` de
-# package.json ("pnpm@11.10.0"). Solo necesitamos Node.
-nixPkgs = ["nodejs-22_x"]
+# Nixpacks instala Node según NODE_VERSION. pnpm se detecta del campo
+# `packageManager` en package.json ("pnpm@11.10.0").
 
 [phases.install]
-# pnpm install con build scripts habilitados
+# Corepack + pnpm install con build scripts habilitados
 cmds = [
   "corepack enable && corepack prepare pnpm@11.10.0 --activate",
   "pnpm install --frozen-lockfile --config.dangerouslyAllowAllBuilds=true",
