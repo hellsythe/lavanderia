@@ -1,35 +1,28 @@
-# docker-compose.coolify.yml — Producción en Coolify
+# docker-compose.coolify.yml — Producción en Coolify (SOLO API)
 #
-# Stack: API + Web (2 containers). Las DBs (Postgres, Redis) son Coolify-managed
-# o externas — conectamos por hostname.
+# Este compose contiene SOLO la API. El frontend se deploya como Static Site
+# separado (ver infra/coolify/README.md sección "Split deployment").
+#
+# Razón del split: cuando Coolify gestiona un Docker Compose con varios
+# servicios, inyecta labels `caddy_0.*` con `try_files` automático que
+# asume que los archivos están en el filesystem de Caddy. Esto rompe
+# el routing para containers nginx que sirven SPA routes (como Next.js
+# static export). Separar el web en Static Site evita este problema.
 #
 # Setup en Coolify:
 #   1. New Resource → Docker Compose
-#   2. Source: tu repo + rama
+#   2. Source: tu repo + branch `main`
 #   3. Docker Compose Location: docker-compose.coolify.yml
 #   4. Environment Variables: ver .env.production.example
-#   5. Dominios: api.tu-dominio.com → api, lavander.tu-dominio.com → web
+#   5. Dominio: api.tu-dominio.com → este compose (la API)
 #
-# ─────────────────────────────────────────────────────────────────────
-# RED — IMPORTANTE
-# ─────────────────────────────────────────────────────────────────────
-# `networks.coolify` referencia una red EXTERNA que ya existe en Coolify.
-# El nombre por defecto en Coolify v4 es `coolify`.
-#
-# Si tu Coolify usa otro nombre, cámbialo aquí Y en la red del compose.
-# Para verificarlo, en Coolify ve a cualquier DB existente y mira
-# "Container Details" → la red aparece en `Network` (algo como `coolify`
-# o `coolify-<uuid>`).
-#
-# Si la red no se llama `coolify`, ver `infra/coolify/README.md` sección
-# "Troubleshooting" para cómo ajustar.
-#
-# La razón de usar una red externa explícita:
-#   - La API necesita resolver hostnames como `postgres` y `redis`
-#     (tus DBs Coolify-managed están en esa red).
-#   - Coolify expone los containers al proxy reverso en esa misma red.
-#   - Sin esto, los containers quedan en una red aislada de compose
-#     sin acceso a las DBs externas.
+# El frontend se deploya como segundo recurso:
+#   1. New Resource → Static Site
+#   2. Source: tu repo + branch `main`
+#   3. Build Pack: Dockerfile
+#   4. Docker File Location: apps/web/Dockerfile (target: static)
+#   5. Publish Directory: /public
+#   6. Dominio: lavander.tu-dominio.com → Static Site
 
 services:
   api:
@@ -38,10 +31,8 @@ services:
       dockerfile: ./apps/api/Dockerfile
     container_name: lavanderpro-api
     restart: unless-stopped
-    ports:
-      # Coolify también usa Traefik para enrutar dominios al puerto interno,
-      # pero exponer el puerto ayuda a debugging vía `docker exec` y `curl localhost`.
-      - "${API_PORT:-4000}:4000"
+    expose:
+      - "4000"
     environment:
       NODE_ENV: production
       PORT: 4000
@@ -58,7 +49,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-60d}
-      # ── CORS (dominios del frontend) ──
+      # ── CORS ──
+      # Lista separada por comas de dominios del frontend autorizados.
       CORS_ORIGINS: ${CORS_ORIGINS}
     networks:
       - coolify
@@ -68,22 +60,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-
-  web:
-    build:
-      context: .
-      dockerfile: ./apps/web/Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-    container_name: lavanderpro-web
-    restart: unless-stopped
-    ports:
-      - "${WEB_PORT:-3000}:80"
-    depends_on:
-      - api
-    networks:
-      - coolify
-    # nginx escucha en 80 — Coolify enruta según el dominio configurado
 
 networks:
   coolify:
