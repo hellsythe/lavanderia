@@ -1,33 +1,30 @@
 # Deploy en Coolify — LavanderPro
 
 Coolify es un PaaS self-hosted (alternativa a Vercel/Netlify). Este repo
-está preparado para deployarse como **2 recursos separados** para evitar
-los issues de auto-routing de Coolify con Caddy/Traefik:
+está preparado para deployarse como **3 recursos separados**:
 
 | Recurso Coolify | Tipo | Notas |
 |---|---|---|
 | **PostgreSQL** | Coolify-managed (ya existe) | Servicio gestionado |
 | **Redis** | Coolify-managed (ya existe) | Servicio gestionado |
 | **API** | Docker Compose | Solo el backend |
-| **Web** | Static Site (Dockerfile) | Solo el frontend, 0 containers |
+| **Web** | **Application** (Dockerfile) | Build + nginx, NO Static Site |
 
-## ¿Por qué split?
+## ⚠️ Por qué NO usar Static Site
 
-Cuando Coolify gestiona un Docker Compose con varios servicios, **inyecta
-labels `caddy_0.*` con `try_files` automático** que asume que los archivos
-estáticos están en el filesystem del proxy de Caddy. Esto rompe el routing
-para containers nginx que sirven SPAs (como Next.js static export).
+`Static Site` en Coolify es **solo para archivos ya construidos en el repo** (no
+tiene buildpack). Si lo usas con Next.js, tendrías que commitear `apps/web/out/`
+al repo (mala práctica: artefactos binarios en git, builds no reproducibles).
 
-Solución: separar web en Static Site (Coolify sirve los archivos directamente
-con su propio servidor, sin labels problemáticas).
-
----
+**Usa `Application`** que sí permite Dockerfile buildpack. Coolify construye
+la imagen desde `apps/web/Dockerfile` y maneja el routing correctamente
+(sin las labels `caddy_0.*` problemáticas que tiene Docker Compose).
 
 ## Recursos a crear en Coolify
 
 ### 1. API — Docker Compose
 
-1. **+ New Resource** → **Docker Compose**
+1. **+ New Resource → Docker Compose**
 2. **Source:** tu repo de GitHub + rama `main`
 3. **Docker Compose Location:** `docker-compose.coolify.yml`
 4. **Environment Variables:**
@@ -45,14 +42,14 @@ con su propio servidor, sin labels problemáticas).
 5. **Domain:** `api.<tu-dominio>.sslip.io`
 6. **Deploy**
 
-### 2. Web — Static Site
+### 2. Web — Application (Dockerfile)
 
-1. **+ New Resource** → **Static Site**
+1. **+ New Resource → Application** ← NO Static Site
 2. **Source:** tu repo + misma rama `main`
-3. **Build Pack:** **Dockerfile** (no Nixpacks — no soporta pnpm monorepos)
-4. **Docker File Location:** `apps/web/Dockerfile`
-5. **Docker Build Target:** `static`
-6. **Publish Directory:** `/public`
+3. **Build Pack:** **Dockerfile**
+4. **Base Directory:** *(vacío)* ← Coolify usa la raíz del repo
+5. **Dockerfile Location:** `Dockerfile` ← Coolify lo encuentra automáticamente
+6. **Port:** `80` (Coolify lo detecta del EXPOSE del Dockerfile)
 7. **Environment Variables:**
    ```
    NEXT_PUBLIC_API_URL=https://api.<tu-dominio>.sslip.io/api
@@ -60,8 +57,8 @@ con su propio servidor, sin labels problemáticas).
 8. **Domain:** `lavander.<tu-dominio>.sslip.io`
 9. **Deploy**
 
-Coolify hace `docker build --target static`, extrae `/public` y lo sirve
-con su propio servidor.
+Coolify hace `docker build` (build context = raíz del repo), ejecuta el container
+nginx, y enruta el tráfico via Traefik nativo. **0 labels `caddy_0.*` problemáticas.**
 
 ---
 
@@ -122,13 +119,14 @@ desde la UI o vía `/api/auth/register`.
 │  └───────────────────────────────────────────────┘   │
 │                                                     │
 │  ┌─ lavanderpro-api (Docker Compose) ───────────┐   │
-│  │   api.tu-dominio.sslip.io → container api    │   │
+│  │   api.tu-dominio.sslip.io                    │   │
 │  │   Container: NestJS en puerto 4000           │   │
 │  └───────────────────────────────────────────────┘   │
 │                                                     │
-│  ┌─ lavanderpro-web (Static Site) ─ NO CONTAINER ┐  │
-│  │   lavander.tu-dominio.sslip.io → /public      │   │
-│  │   Servido por Coolify directamente            │   │
+│  ┌─ lavanderpro-web (Application / Dockerfile) ─┐   │
+│  │   lavander.tu-dominio.sslip.io               │   │
+│  │   Container: nginx sirviendo static files    │   │
+│  │   Routing: Traefik nativo de Coolify         │   │
 │  └───────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────┘
    │
@@ -147,7 +145,7 @@ git push origin main
 
 Coolify detecta el push y pregunta si redesplegar:
 - **API**: rebuild Docker + restart (1-2 min)
-- **Web**: rebuild Docker + reemplaza `/public` (1-2 min, primera vez con cache de layers)
+- **Web**: rebuild Docker + restart nginx (1-2 min con cache de layers)
 
 ---
 
@@ -156,9 +154,10 @@ Coolify detecta el push y pregunta si redesplegar:
 | Error | Causa probable | Fix |
 |---|---|---|
 | `ECONNREFUSED 5432` en API logs | `POSTGRES_HOST` apunta a un hostname no accesible | Verificar "Internal Hostname" en Coolify → postgres |
-| Web 404 | Build del Static Site falló | Ver "Show Debug Logs" en Coolify, revisar que `target: static` esté aplicado |
-| `permission denied for extension citext` | Usuario Postgres no tiene permisos para `CREATE EXTENSION` | Ejecutar `CREATE EXTENSION IF NOT EXISTS citext` manualmente vía Adminer/psql |
-| Web carga pero login falla | `NEXT_PUBLIC_API_URL` apunta a URL incorrecta | Verificar variable en Coolify → Resource → web → Environment Variables. Re-deploy |
+| Web da 404 | Estás usando Docker Compose (no Application) | Eliminar el compose, crear como Application |
+| Web no encuentra archivos | Build target mal configurado | En Coolify, verificar que el Dockerfile tiene `apps/web/Dockerfile` correcto |
+| `permission denied for extension citext` | Usuario Postgres sin permisos para CREATE EXTENSION | Ejecutar manualmente via Adminer/psql |
+| Web carga pero login falla | `NEXT_PUBLIC_API_URL` apunta a URL incorrecta | Verificar variable en Coolify → web → Environment Variables. Re-deploy |
 | Migrations duplicadas | DB ya tenía tablas de intento anterior | Drop database y dejar que la API recree todo |
 
 ---
@@ -168,7 +167,7 @@ Coolify detecta el push y pregunta si redesplegar:
 ```bash
 cd /Users/hellsythe/Documents/opencode/laundry-system
 
-# Levantar todo el stack (Postgres + Redis + API + Web con nginx)
+# Levantar todo el stack
 docker compose -f docker-compose.yml up -d
 
 # Ver
@@ -187,8 +186,7 @@ docker compose -f docker-compose.yml up -d
 
 ## Para Capacitor (mobile + Windows nativo)
 
-Una vez deployado el Static Site, los archivos en `apps/web/out/` pueden
-empaquetarse como app nativa:
+Una vez deployado, los archivos en `apps/web/out/` pueden empaquetarse:
 
 ```bash
 npx cap add android
@@ -197,6 +195,4 @@ npx cap add electron  # Windows
 npx cap sync
 ```
 
-Los archivos se sincronizan con `android/app/src/main/assets/public/`,
-`ios/App/App/public/`, etc. El bundle es **offline-first ready** —
-próximo paso: agregar Service Worker para uso sin internet.
+Próximo paso: agregar Service Worker para uso offline.
