@@ -1,8 +1,7 @@
 # docker-compose.coolify.yml — Producción en Coolify
 #
-# Stack completo: PostgreSQL + Redis + API + Web.
-# Las DBs son externas (Coolify-managed o donde sea); el resto se builda
-# con Dockerfiles propios (sin Nixpacks, que no soporta bien pnpm monorepos).
+# Stack: API + Web (2 containers). Las DBs (Postgres, Redis) son Coolify-managed
+# o externas — conectamos por hostname.
 #
 # Setup en Coolify:
 #   1. New Resource → Docker Compose
@@ -10,6 +9,27 @@
 #   3. Docker Compose Location: docker-compose.coolify.yml
 #   4. Environment Variables: ver .env.production.example
 #   5. Dominios: api.tu-dominio.com → api, lavander.tu-dominio.com → web
+#
+# ─────────────────────────────────────────────────────────────────────
+# RED — IMPORTANTE
+# ─────────────────────────────────────────────────────────────────────
+# `networks.coolify` referencia una red EXTERNA que ya existe en Coolify.
+# El nombre por defecto en Coolify v4 es `coolify`.
+#
+# Si tu Coolify usa otro nombre, cámbialo aquí Y en la red del compose.
+# Para verificarlo, en Coolify ve a cualquier DB existente y mira
+# "Container Details" → la red aparece en `Network` (algo como `coolify`
+# o `coolify-<uuid>`).
+#
+# Si la red no se llama `coolify`, ver `infra/coolify/README.md` sección
+# "Troubleshooting" para cómo ajustar.
+#
+# La razón de usar una red externa explícita:
+#   - La API necesita resolver hostnames como `postgres` y `redis`
+#     (tus DBs Coolify-managed están en esa red).
+#   - Coolify expone los containers al proxy reverso en esa misma red.
+#   - Sin esto, los containers quedan en una red aislada de compose
+#     sin acceso a las DBs externas.
 
 services:
   api:
@@ -18,6 +38,10 @@ services:
       dockerfile: ./apps/api/Dockerfile
     container_name: lavanderpro-api
     restart: unless-stopped
+    ports:
+      # Coolify también usa Traefik para enrutar dominios al puerto interno,
+      # pero exponer el puerto ayuda a debugging vía `docker exec` y `curl localhost`.
+      - "${API_PORT:-4000}:4000"
     environment:
       NODE_ENV: production
       PORT: 4000
@@ -53,13 +77,15 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: lavanderpro-web
     restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3000}:80"
     depends_on:
       - api
     networks:
       - coolify
-    # nginx sirve en 80 — Coolify expone el dominio configurado
+    # nginx escucha en 80 — Coolify enruta según el dominio configurado
 
 networks:
   coolify:
-    name: coolify
+    name: ${COOLIFY_NETWORK:-coolify}
     external: true
