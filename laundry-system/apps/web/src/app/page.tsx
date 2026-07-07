@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardMeta,
   CardTitle,
+  EmptyState,
   FilterGroup,
   FilterPill,
   KpiCard,
@@ -20,41 +21,40 @@ import {
   TableRow,
   cn,
 } from '@lavanderpro/ui';
+import type { Order, OrderStatus } from '@lavanderpro/shared-types';
 import {
   CheckCircle2,
   Coins,
+  Inbox,
   PackageCheck,
   Sparkles,
   Timer,
   TrendingUp,
   Users,
 } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Sidebar } from '~/components/sidebar';
 import { Topbar } from '~/components/topbar';
+import {
+  useChangeOrderStatus,
+  useOrderCounts,
+  useOrders,
+} from '~/stores/orders-queries';
 
-const ACTIVE_ORDERS = [
-  { id: 'ORD-2847', code: 'ORD-2847', customer: 'María González', items: 8, total: 1240, status: 'proceso' as const, since: '08:15' },
-  { id: 'ORD-2848', code: 'ORD-2848', customer: 'Roberto Sánchez', items: 4, total: 480, status: 'proceso' as const, since: '08:42' },
-  { id: 'ORD-2849', code: 'ORD-2849', customer: 'Ana Martínez', items: 12, total: 1860, status: 'listo' as const, since: '07:30' },
-  { id: 'ORD-2850', code: 'ORD-2850', customer: 'Luis Hernández', items: 6, total: 720, status: 'pendiente' as const, since: '09:10' },
-  { id: 'ORD-2851', code: 'ORD-2851', customer: 'Patricia Ruiz', items: 3, total: 360, status: 'listo' as const, since: '07:55' },
-  { id: 'ORD-2852', code: 'ORD-2852', customer: 'Jorge Vargas', items: 15, total: 2340, status: 'proceso' as const, since: '09:25' },
-];
-
-const HISTORY = [
-  { id: 'ORD-2830', customer: 'Fernando Cruz', delivered: '07:15', total: 980 },
-  { id: 'ORD-2831', customer: 'Silvia Moreno', delivered: '07:45', total: 1240 },
-  { id: 'ORD-2832', customer: 'Andrés López', delivered: '08:00', total: 540 },
-  { id: 'ORD-2833', customer: 'Gabriela Reyes', delivered: '08:20', total: 1620 },
-  { id: 'ORD-2834', customer: 'Tomás Aguilar', delivered: '08:35', total: 780 },
-];
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  received: 'Recibido',
+  in_process: 'En proceso',
+  ready: 'Listo',
+  delivered: 'Entregado',
+  cancelled: 'Cancelado',
+};
 
 const TOP_CLIENTS = [
-  { name: 'Hotel Costa Bella', initials: 'HC', orders: 47, lastOrder: '04 jul' },
-  { name: 'Spa Las Palmas', initials: 'SP', orders: 38, lastOrder: '05 jul' },
-  { name: 'Restaurante El Patio', initials: 'RP', orders: 32, lastOrder: '03 jul' },
-  { name: 'Gimnasio IronFit', initials: 'IF', orders: 28, lastOrder: '05 jul' },
-  { name: 'Clínica Dental Plus', initials: 'CD', orders: 22, lastOrder: '02 jul' },
+  { name: 'Hotel Costa Bella', initials: 'HC', orders: 47 },
+  { name: 'Spa Las Palmas', initials: 'SP', orders: 38 },
+  { name: 'Restaurante El Patio', initials: 'RP', orders: 32 },
+  { name: 'Gimnasio IronFit', initials: 'IF', orders: 28 },
+  { name: 'Clínica Dental Plus', initials: 'CD', orders: 22 },
 ];
 
 const REVENUE_WEEK = [
@@ -75,7 +75,6 @@ export default function HomePage() {
         <Topbar title="Panel Principal" breadcrumb="Resumen de hoy" />
         <main id="main" className="flex-1 p-5 sm:p-6">
           <KpiStrip />
-
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mt-5">
             <div className="xl:col-span-2">
               <ActiveOrdersCard />
@@ -85,10 +84,9 @@ export default function HomePage() {
               <CycleTimeCard />
             </div>
           </div>
-
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mt-5">
             <div className="xl:col-span-2">
-              <HistoryCard />
+              <RecentHistoryCard />
             </div>
             <TopClientsCard />
           </div>
@@ -98,102 +96,254 @@ export default function HomePage() {
   );
 }
 
+/* --------------------------- KPI Strip --------------------------- */
+
 function KpiStrip() {
+  const { data: counts, isLoading } = useOrderCounts();
+
+  const active =
+    (counts?.received ?? 0) +
+    (counts?.in_process ?? 0) +
+    (counts?.ready ?? 0);
+
+  // Heurística para KPIs secundarios hasta tener módulo de reportes
+  const totalToday = (counts?.delivered ?? 0) * 320; // placeholder mientras no haya payments
+  const cyclePct = 70;
+  const cycleMin = 42;
+
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
       <KpiCard
         label="Pedidos Activos"
-        value="24"
-        delta={{ value: '+3 vs. ayer', direction: 'up' }}
+        value={isLoading ? '…' : String(active)}
+        delta={{ value: 'En proceso + listos + recibidos', direction: 'neutral' }}
         icon={<Sparkles className="h-4 w-4" />}
         iconTone="warning"
       />
       <KpiCard
-        label="Ingresos Hoy"
-        value="$4,280"
-        delta={{ value: '+12% vs. ayer', direction: 'up' }}
+        label="Entregados Hoy"
+        value={isLoading ? '…' : String(counts?.delivered ?? 0)}
+        delta={{ value: 'Cierre del día en curso', direction: 'neutral' }}
         icon={<Coins className="h-4 w-4" />}
         iconTone="success"
       />
       <KpiCard
-        label="Clientes Registrados"
-        value="186"
-        delta={{ value: '+5 esta semana', direction: 'up' }}
-        icon={<Users className="h-4 w-4" />}
+        label="Listos p/ entregar"
+        value={isLoading ? '…' : String(counts?.ready ?? 0)}
+        delta={{ value: 'Esperan recogida del cliente', direction: 'neutral' }}
+        icon={<PackageCheck className="h-4 w-4" />}
+        iconTone="accent"
+      />
+      <KpiCard
+        label="Ingresos Hoy"
+        value={`$${(totalToday || 0).toLocaleString('es-MX')}`}
+        delta={{ value: 'Módulo payments pendiente', direction: 'neutral' }}
+        icon={<Coins className="h-4 w-4" />}
         iconTone="info"
       />
       <KpiCard
         label="Tiempo de Ciclo"
-        value="42m"
-        delta={{ value: '−4 min vs. meta', direction: 'up' }}
+        value={`${cycleMin}m`}
+        delta={{ value: 'Módulo métricas pendiente', direction: 'neutral' }}
         icon={<Timer className="h-4 w-4" />}
         iconTone="purple"
-      />
-      <KpiCard
-        label="Listos p/ entregar"
-        value="9"
-        delta={{ value: '2 pendientes', direction: 'neutral' }}
-        icon={<PackageCheck className="h-4 w-4" />}
-        iconTone="accent"
       />
     </div>
   );
 }
 
+/* --------------------------- Active Orders --------------------------- */
+
 function ActiveOrdersCard() {
+  const [filter, setFilter] = useState<'all' | 'in_process' | 'ready' | 'received'>('all');
+  const { data, isLoading } = useOrders({
+    status: filter === 'all' ? ['in_process', 'ready', 'received'] : [filter],
+    limit: 20,
+  });
+  const orders = data?.items ?? [];
+  const total = data?.total ?? 0;
+
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <CardTitle>Pedidos Activos</CardTitle>
           <FilterGroup>
-            <FilterPill active>Todos</FilterPill>
-            <FilterPill>En proceso</FilterPill>
-            <FilterPill>Listo</FilterPill>
-            <FilterPill>Pendiente</FilterPill>
+            <FilterPill active={filter === 'all'} onClick={() => setFilter('all')}>
+              Todos
+            </FilterPill>
+            <FilterPill active={filter === 'in_process'} onClick={() => setFilter('in_process')}>
+              En proceso
+            </FilterPill>
+            <FilterPill active={filter === 'ready'} onClick={() => setFilter('ready')}>
+              Listo
+            </FilterPill>
+            <FilterPill active={filter === 'received'} onClick={() => setFilter('received')}>
+              Recibido
+            </FilterPill>
           </FilterGroup>
         </div>
-        <CardMeta>{ACTIVE_ORDERS.length} en vuelo</CardMeta>
+        <CardMeta>{isLoading ? '…' : `${total} en vuelo`}</CardMeta>
       </CardHeader>
       <CardBody className="p-0">
-        <Table>
-          <TableHeader>
-            <tr>
-              <TableHead>N° Orden</TableHead>
-              <TableHead>Cliente</TableHead>
-              <TableHead>Prendas</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Desde</TableHead>
-            </tr>
-          </TableHeader>
-          <TableBody>
-            {ACTIVE_ORDERS.map((o) => (
-              <TableRow key={o.id} tabIndex={0} role="button" className="cursor-pointer">
-                <TableCell className="font-mono text-[12px] text-muted">{o.code}</TableCell>
-                <TableCell className="font-semibold">{o.customer}</TableCell>
-                <TableCell className="text-muted">{o.items} pzas</TableCell>
-                <TableCell>
-                  <StatusPill status={o.status}>
-                    {o.status === 'proceso' && 'En proceso'}
-                    {o.status === 'listo' && 'Listo'}
-                    {o.status === 'pendiente' && 'Pendiente'}
-                  </StatusPill>
-                </TableCell>
-                <TableCell className="text-right font-semibold">
-                  ${o.total.toLocaleString('es-MX')}
-                </TableCell>
-                <TableCell className="text-right font-mono text-[12px] text-muted">
-                  {o.since}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        {!isLoading && orders.length === 0 ? (
+          <EmptyState
+            icon={<Inbox />}
+            title="Sin pedidos en este estado"
+            description="Cuando se creen pedidos activos aparecerán aquí."
+          />
+        ) : (
+          <Table>
+            <TableHeader>
+              <tr>
+                <TableHead>N° Orden</TableHead>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Prendas</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+              </tr>
+            </TableHeader>
+            <TableBody>
+              {orders.map((o) => (
+                <ActiveOrderRow key={o.id} order={o} />
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </CardBody>
     </Card>
   );
 }
+
+function ActiveOrderRow({ order }: { order: Order }) {
+  const changeStatus = useChangeOrderStatus();
+  const pieces = order.items.reduce(
+    (sum, i) => sum + (i.unit === 'piece' ? i.quantity : 0),
+    0,
+  );
+  const kg = order.items.reduce(
+    (sum, i) => sum + (i.unit === 'kg' ? i.quantity : 0),
+    0,
+  );
+
+  const nextStatus: Record<OrderStatus, OrderStatus | null> = {
+    received: 'in_process',
+    in_process: 'ready',
+    ready: 'delivered',
+    delivered: null,
+    cancelled: null,
+  };
+  const next = nextStatus[order.status];
+
+  return (
+    <TableRow
+      tabIndex={0}
+      role="button"
+      onClick={() => {
+        if (next) changeStatus.mutate({ id: order.id, status: next });
+      }}
+      onKeyDown={(e) => {
+        if ((e.key === 'Enter' || e.key === ' ') && next) {
+          e.preventDefault();
+          changeStatus.mutate({ id: order.id, status: next });
+        }
+      }}
+      className="cursor-pointer"
+      aria-label={`Avanzar pedido ${order.code}`}
+    >
+      <TableCell className="font-mono text-[12px] text-muted">{order.code}</TableCell>
+      <TableCell className="font-semibold">{order.customerName}</TableCell>
+      <TableCell className="text-muted">
+        {pieces > 0 ? `${pieces} pzas` : ''}
+        {kg > 0 ? `${pieces > 0 ? ' · ' : ''}${kg.toFixed(1)} kg` : ''}
+        {pieces === 0 && kg === 0 ? '—' : ''}
+      </TableCell>
+      <TableCell>
+        <StatusPill status={order.status}>{STATUS_LABELS[order.status]}</StatusPill>
+      </TableCell>
+      <TableCell className="text-right font-semibold">
+        ${order.total.toLocaleString('es-MX')}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/* --------------------------- Recent History --------------------------- */
+
+function RecentHistoryCard() {
+  const { data, isLoading } = useOrders({ status: ['delivered'], limit: 5 });
+  const delivered = data?.items ?? [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Pedidos Entregados Recientes</CardTitle>
+        <CardMeta>
+          {isLoading ? '…' : `${data?.total ?? 0} en el último mes`}
+        </CardMeta>
+      </CardHeader>
+      <CardBody className="p-0">
+        {!isLoading && delivered.length === 0 ? (
+          <EmptyState
+            icon={<CheckCircle2 />}
+            title="Sin entregas recientes"
+            description="Los pedidos entregados aparecerán aquí."
+          />
+        ) : (
+          <>
+            <Table>
+              <TableHeader>
+                <tr>
+                  <TableHead>N° Orden</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Entregado</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Estado</TableHead>
+                </tr>
+              </TableHeader>
+              <TableBody>
+                {delivered.map((o) => (
+                  <TableRow key={o.id}>
+                    <TableCell className="font-mono text-[12px] text-muted">
+                      {o.code}
+                    </TableCell>
+                    <TableCell className="font-semibold">{o.customerName}</TableCell>
+                    <TableCell className="font-mono text-[12px] text-muted">
+                      {o.deliveredAt
+                        ? new Date(o.deliveredAt).toLocaleTimeString('es-MX', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : '—'}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">
+                      ${o.total.toLocaleString('es-MX')}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <StatusPill status="entregado">
+                        <CheckCircle2 className="h-3 w-3" /> Entregado
+                      </StatusPill>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <Pagination
+              page={1}
+              totalPages={Math.max(1, Math.ceil((data?.total ?? 0) / 5))}
+              total={data?.total ?? 0}
+              onPageChange={() => {
+                /* TODO: paginación real cuando se implemente reportes */
+              }}
+            />
+          </>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+/* --------------------------- Static Cards --------------------------- */
 
 function RevenueCard() {
   return (
@@ -209,11 +359,11 @@ function RevenueCard() {
         </div>
         <CardMeta>
           <TrendingUp className="inline h-3 w-3 mr-1 text-success" />
-          +18% vs. semana anterior
+          Módulo payments pendiente
         </CardMeta>
       </CardHeader>
       <CardBody>
-        <div className="text-display-revenue text-fg num mb-1">$28,940</div>
+        <div className="text-display-revenue text-fg num mb-1">$—</div>
         <div className="text-meta text-muted mb-4">Esta semana · Lun–Dom</div>
         <div className="flex items-end gap-1.5 h-[88px]">
           {REVENUE_WEEK.map((bar, i) => (
@@ -284,53 +434,6 @@ function Stat({
   );
 }
 
-function HistoryCard() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Historial de Pedidos</CardTitle>
-        <CardMeta>Entregados hoy</CardMeta>
-      </CardHeader>
-      <CardBody className="p-0">
-        <Table>
-          <TableHeader>
-            <tr>
-              <TableHead>N° Orden</TableHead>
-              <TableHead>Cliente</TableHead>
-              <TableHead>Entregado</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Estado</TableHead>
-            </tr>
-          </TableHeader>
-          <TableBody>
-            {HISTORY.map((h) => (
-              <TableRow key={h.id}>
-                <TableCell className="font-mono text-[12px] text-muted">{h.id}</TableCell>
-                <TableCell className="font-semibold">{h.customer}</TableCell>
-                <TableCell className="font-mono text-[12px] text-muted">{h.delivered}</TableCell>
-                <TableCell className="text-right font-semibold">
-                  ${h.total.toLocaleString('es-MX')}
-                </TableCell>
-                <TableCell className="text-right">
-                  <StatusPill status="entregado">
-                    <CheckCircle2 className="h-3 w-3" /> Entregado
-                  </StatusPill>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        <Pagination
-          page={1}
-          totalPages={4}
-          total={HISTORY.length + 7}
-          onPageChange={() => {}}
-        />
-      </CardBody>
-    </Card>
-  );
-}
-
 function TopClientsCard() {
   return (
     <Card>
@@ -350,7 +453,7 @@ function TopClientsCard() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[13px] font-semibold text-fg truncate">{c.name}</div>
-                <div className="text-meta text-muted">Último: {c.lastOrder}</div>
+                <div className="text-meta text-muted">{c.orders} pedidos</div>
               </div>
               <div className="text-right">
                 <div className="text-[15px] font-bold text-accent num">{c.orders}</div>
@@ -359,6 +462,12 @@ function TopClientsCard() {
             </li>
           ))}
         </ul>
+        <div className="px-4 py-3 border-t border-border text-center">
+          <span className="text-meta text-muted">
+            <Users className="inline h-3 w-3 mr-1" />
+            Módulo de reportes próximamente
+          </span>
+        </div>
       </CardBody>
     </Card>
   );

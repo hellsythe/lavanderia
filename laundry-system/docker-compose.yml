@@ -1,0 +1,59 @@
+# Docker Compose — LavanderPro (desarrollo local)
+#
+# Levanta PostgreSQL + Redis + Adminer para inspección visual de la DB.
+# Coolify se usará en producción; este compose es solo para dev local.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lavanderpro-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lavanderpro}
+      POSTGRES_USER: ${POSTGRES_USER:-lavanderpro}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lavanderpro}
+    ports:
+      # Usar 5433 (no 5432) para evitar conflicto con proyectos existentes
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - lavanderpro_pgdata:/var/lib/postgresql/data
+      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-lavanderpro} -d ${POSTGRES_DB:-lavanderpro}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: lavanderpro-redis
+    restart: unless-stopped
+    ports:
+      # Usar 6380 (no 6379) para evitar conflicto
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - lavanderpro_redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  adminer:
+    image: adminer:4.8.1
+    container_name: lavanderpro-adminer
+    restart: unless-stopped
+    ports:
+      - "${ADMINER_PORT:-8081}:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: pepa-linha-dark
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  lavanderpro_pgdata:
+    name: lavanderpro_pgdata
+  lavanderpro_redisdata:
+    name: lavanderpro_redisdata

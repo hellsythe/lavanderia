@@ -5,10 +5,12 @@ packages:
 allowBuilds:
   '@biomejs/biome': set this to true or false
   '@nestjs/core': set this to true or false
+  bcrypt: set this to true or false
   unrs-resolver: set this to true or false
 
 onlyBuiltDependencies:
   - '@biomejs/biome'
   - '@nestjs/core'
-  - 'esbuild'
+  - bcrypt
+  - esbuild
   - 'unrs-resolver'

@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { Public_Sans } from 'next/font/google';
 import './globals.css';
+import { Providers } from '~/components/providers';
+import { AuthHydrator } from '~/components/auth-hydrator';
 
 const publicSans = Public_Sans({
   subsets: ['latin'],
@@ -22,7 +24,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <a className="skip-link" href="#main">
           Ir al contenido principal
         </a>
-        {children}
+        <Providers>
+          <AuthHydrator />
+          {children}
+        </Providers>
       </body>
     </html>
   );

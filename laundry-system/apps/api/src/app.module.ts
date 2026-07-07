@@ -1,12 +1,44 @@
-import 'reflect-metadata';
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
+import { TenantOrmEntity } from './tenants/infrastructure/tenant.orm-entity';
+import { UserOrmEntity } from './auth/infrastructure/user.orm-entity';
+import { OrderOrmEntity } from './orders/infrastructure/order.orm-entity';
+import { OrderItemOrmEntity } from './orders/infrastructure/order-item.orm-entity';
+import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
+import { OrdersModule } from './orders/orders.module';
+import { TenantsModule } from './tenants/tenants.module';
 
 @Module({
-  imports: [HealthModule],
-  controllers: [AppController],
-  providers: [AppService],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['../../.env', '.env'],
+    }),
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'postgres',
+        host: config.get<string>('POSTGRES_HOST', 'localhost'),
+        port: config.get<number>('POSTGRES_PORT', 5433),
+        username: config.get<string>('POSTGRES_USER', 'lavanderpro'),
+        password: config.get<string>('POSTGRES_PASSWORD', 'lavanderpro'),
+        database: config.get<string>('POSTGRES_DB', 'lavanderpro'),
+        entities: [TenantOrmEntity, UserOrmEntity, OrderOrmEntity, OrderItemOrmEntity],
+        migrations: ['dist/database/migrations/*.js'],
+        migrationsRun: true,
+        synchronize: false,
+        logging: ['error', 'warn', 'migration'],
+        namingStrategy: new SnakeNamingStrategy(),
+      }),
+    }),
+    TenantsModule,
+    AuthModule,
+    OrdersModule,
+    HealthModule,
+  ],
 })
 export class AppModule {}

@@ -1,4 +1,6 @@
 export * from './components/accordion';
+export * from './components/alert';
+export * from './components/brand-icon';
 export * from './components/button';
 export * from './components/card';
 export * from './components/data-table';
@@ -10,6 +12,7 @@ export * from './components/kpi-card';
 export * from './components/label';
 export * from './components/modal';
 export * from './components/pagination';
+export * from './components/password-input';
 export * from './components/progress-track';
 export * from './components/search-input';
 export * from './components/service-card';
