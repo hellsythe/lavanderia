@@ -1,16 +1,15 @@
-# docker-compose.coolify.yml — Producción en Coolify (solo API)
+# docker-compose.coolify.yml — Producción en Coolify
 #
-# Asume que PostgreSQL y Redis YA EXISTEN en Coolify (o donde sea).
-# Solo deployamos la API — la web se sirve como Static Site de Coolify
-# (ver infra/coolify/README.md).
+# Stack completo: PostgreSQL + Redis + API + Web.
+# Las DBs son externas (Coolify-managed o donde sea); el resto se builda
+# con Dockerfiles propios (sin Nixpacks, que no soporta bien pnpm monorepos).
 #
-# Conectar a DBs externos:
-#   - Coolify expone los servicios en su red interna. El hostname suele ser
-#     el nombre del recurso (ej: `postgres`) o `<nombre>-<id>`.
-#   - Configurar POSTGRES_HOST, REDIS_HOST apuntando al hostname correcto.
-#
-# Alternativa: si prefieres que la API traiga su propio Postgres en compose,
-# ver docker-compose.full-stack.yml (incluye postgres + redis).
+# Setup en Coolify:
+#   1. New Resource → Docker Compose
+#   2. Source: tu repo + rama
+#   3. Docker Compose Location: docker-compose.coolify.yml
+#   4. Environment Variables: ver .env.production.example
+#   5. Dominios: api.tu-dominio.com → api, lavander.tu-dominio.com → web
 
 services:
   api:
@@ -19,8 +18,6 @@ services:
       dockerfile: ./apps/api/Dockerfile
     container_name: lavanderpro-api
     restart: unless-stopped
-    # No agregamos depends_on aquí porque las DBs son externas a este compose.
-    # Coolify esperará por los healthchecks externos via el proxy reverso.
     environment:
       NODE_ENV: production
       PORT: 4000
@@ -41,10 +38,6 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS}
     networks:
       - coolify
-      # Si tu DB de Coolify está en otra red, agrégala aquí:
-      # - coolify-db
-
-    # Healthcheck
     healthcheck:
       test: ['CMD', 'curl', '-fsS', 'http://localhost:4000/api/health']
       interval: 30s
@@ -52,9 +45,20 @@ services:
       retries: 3
       start_period: 30s
 
-# ── Networks ──
-# `coolify` es la red por defecto donde Coolify pone sus servicios.
-# Si tus DBs están en otra red con nombre distinto, ajústalo.
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    container_name: lavanderpro-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    networks:
+      - coolify
+    # nginx sirve en 80 — Coolify expone el dominio configurado
+
 networks:
   coolify:
     name: coolify
