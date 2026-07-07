@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1.7
-# ---------- Stage 1: build ----------
-FROM node:22-alpine AS build
+# ---------- Stage 1: deps (build-time, todas las deps) ----------
+# Usado también como `target: deps` en docker-compose dev
+# (necesitamos devDependencies para `pnpm dev`).
+FROM node:22-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /repo
 
@@ -19,6 +21,9 @@ RUN pnpm install --frozen-lockfile --config.dangerouslyAllowAllBuilds=true
 COPY packages/ui ./packages/ui
 COPY packages/shared-types ./packages/shared-types
 COPY apps/web ./apps/web
+
+# ---------- Stage 1b: build ----------
+FROM deps AS build
 
 # Build en orden: shared-types → ui → web
 RUN cd packages/shared-types && pnpm run build

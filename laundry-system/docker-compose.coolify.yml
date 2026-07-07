@@ -1,120 +1,61 @@
-# docker-compose.coolify.yml — Producción
+# docker-compose.coolify.yml — Producción en Coolify (solo API)
 #
-# Stack completo para deployar en Coolify:
-#   - postgres    (PostgreSQL 16 con extensiones + init script)
-#   - redis       (Redis 7 para BullMQ futuro)
-#   - api         (NestJS, multi-stage build)
-#   - web         (Next.js static + nginx)
+# Asume que PostgreSQL y Redis YA EXISTEN en Coolify (o donde sea).
+# Solo deployamos la API — la web se sirve como Static Site de Coolify
+# (ver infra/coolify/README.md).
 #
-# Cómo se deploya en Coolify:
-#   1. Crear nuevo recurso tipo "Docker Compose"
-#   2. Apuntar al repo y branch
-#   3. Coolify detecta este archivo, hace git pull, construye las imágenes
-#      definidas con `build:` y arranca los servicios.
-#   4. Coolify inyecta un proxy reverso (Traefik) por delante con TLS.
+# Conectar a DBs externos:
+#   - Coolify expone los servicios en su red interna. El hostname suele ser
+#     el nombre del recurso (ej: `postgres`) o `<nombre>-<id>`.
+#   - Configurar POSTGRES_HOST, REDIS_HOST apuntando al hostname correcto.
 #
-# Los secrets se configuran en la UI de Coolify o en `.env`.
+# Alternativa: si prefieres que la API traiga su propio Postgres en compose,
+# ver docker-compose.full-stack.yml (incluye postgres + redis).
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: lavanderpro-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      PGDATA: /var/lib/postgresql/data/pgdata
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - lavanderpro
-    # No exponer al exterior — solo el backend lo alcanza
-    expose:
-      - "5432"
-
-  redis:
-    image: redis:7-alpine
-    container_name: lavanderpro-redis
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-    networks:
-      - lavanderpro
-    expose:
-      - "6379"
-
   api:
     build:
       context: .
       dockerfile: ./apps/api/Dockerfile
     container_name: lavanderpro-api
     restart: unless-stopped
+    # No agregamos depends_on aquí porque las DBs son externas a este compose.
+    # Coolify esperará por los healthchecks externos via el proxy reverso.
     environment:
       NODE_ENV: production
       PORT: 4000
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
+      # ── PostgreSQL (Coolify-managed o externo) ──
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      # ── Redis (Coolify-managed o externo) ──
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      # ── JWT ──
       JWT_SECRET: ${JWT_SECRET}
       JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-60d}
-      # CORS: el dominio público del frontend
+      # ── CORS (dominios del frontend) ──
       CORS_ORIGINS: ${CORS_ORIGINS}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
-      - lavanderpro
-    # Solo accesible vía nginx-proxy de Coolify o el frontend via Traefik.
-    # Si quieres exponerlo directamente, mapear puerto.
-    # Coolify detecta el puerto 4000 automáticamente via EXPOSE.
-    labels:
-      - "coolify.ports=4000:http"
+      - coolify
+      # Si tu DB de Coolify está en otra red, agrégala aquí:
+      # - coolify-db
 
-  web:
-    build:
-      context: .
-      dockerfile: ./apps/web/Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-    container_name: lavanderpro-web
-    restart: unless-stopped
-    depends_on:
-      - api
-    networks:
-      - lavanderpro
-    # nginx sirve en 80; Coolify expone automáticamente con TLS.
-    labels:
-      - "coolify.ports=80:http"
+    # Healthcheck
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:4000/api/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
-volumes:
-  postgres-data:
-    name: lavanderpro-postgres-data
-  redis-data:
-    name: lavanderpro-redis-data
-
+# ── Networks ──
+# `coolify` es la red por defecto donde Coolify pone sus servicios.
+# Si tus DBs están en otra red con nombre distinto, ajústalo.
 networks:
-  lavanderpro:
-    name: lavanderpro-net
-    driver: bridge
+  coolify:
+    name: coolify
+    external: true

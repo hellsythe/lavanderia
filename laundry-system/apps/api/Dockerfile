@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1.7
-# ---------- Stage 1: build ----------
-FROM node:22-alpine AS build
+# ---------- Stage 1: deps (build-time, todas las deps) ----------
+# Este stage se usa también como `target: deps` en docker-compose dev,
+# donde solo necesitamos el node_modules completo (con devDependencies).
+FROM node:22-alpine AS deps
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /repo
 
@@ -18,9 +20,13 @@ COPY packages/shared-types/tsconfig.json ./packages/shared-types/
 # Instalar todo el workspace (incluye api y shared-types)
 RUN pnpm install --frozen-lockfile --config.dangerouslyAllowAllBuilds=true
 
-# Copiar el resto del source (invalidates cache solo si cambia el código)
+# Source completo (necesario para `pnpm dev` en compose dev).
+# El layer se invalida solo si cambia el código.
 COPY apps/api ./apps/api
 COPY packages/shared-types ./packages/shared-types
+
+# ---------- Stage 1b: build (compila shared-types + api) ----------
+FROM deps AS build
 
 # Build: shared-types primero (api lo importa)
 RUN cd packages/shared-types && pnpm run build
