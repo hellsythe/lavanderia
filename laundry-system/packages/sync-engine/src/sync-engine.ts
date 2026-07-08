@@ -38,11 +38,14 @@ interface SyncStore {
   lastSyncAt: number;
   lastError: string | null;
   pendingCount: number;
+  /** True si nunca se hizo initial sync para este user (login fresh). */
+  needsInitialSync: boolean;
 
   requestSync: () => void;
   push: () => Promise<void>;
   pull: () => Promise<void>;
   fullSync: () => Promise<void>;
+  initialSync: () => Promise<void>;
   recomputePending: () => Promise<void>;
 }
 
@@ -70,6 +73,7 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
   lastSyncAt: 0,
   lastError: null,
   pendingCount: 0,
+  needsInitialSync: true, // true por defecto — se setea false después del primer initialSync
 
   /**
    * Trigger un sync (debounced).
@@ -188,6 +192,71 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
     set({ lastSyncAt: Date.now() });
   },
 
+  /**
+   * Initial sync — descarga TODO el dataset del tenant al login.
+   * Llamar UNA vez al autenticar (después de hydrate).
+   *
+   * Es un pull completo: ignora `lastSync`, trae todo desde `since=0`,
+   * bulkPut en Dexie. Después la UI lee del cache instantáneamente
+   * (incluso offline).
+   *
+   * Solo corre online. Si está offline, marca "needs initial sync"
+   * y se triggerea al reconectar.
+   */
+  initialSync: async () => {
+    if (typeof window === 'undefined') return;
+    if (useNetworkStore.getState().state === 'offline') {
+      // No podemos hacer initial sync offline. Marcar para retry
+      // al reconectar.
+      set({ needsInitialSync: true });
+      return;
+    }
+    const { setSyncing, reportSuccess, reportFailure } = useNetworkStore.getState();
+    setSyncing(true);
+    set({ isSyncing: true });
+    try {
+      // Forzar since=0 → traer todo
+      const res = await apiRequest<SyncPullResponse>('/api/sync/changes?since=0');
+
+      // BulkPut todo. Conflicto LWW aplica (todos los registros son del server
+      // así que son más nuevos que la cache vacía).
+      for (const change of res.changes) {
+        if (change.tombstone) continue;
+        if (change.entity === 'order') {
+          const remote = change.payload as Order;
+          const local = await orderRepo.getById(change.entityId);
+          if (!local) await orderRepo.put(remote);
+          else {
+            const winner = resolveConflict(local, remote);
+            await orderRepo.put(winner);
+          }
+        } else if (change.entity === 'customer') {
+          const remote = change.payload as Customer;
+          const local = await customerRepo.getById(change.entityId);
+          if (!local) await customerRepo.put(remote);
+          else {
+            const winner = resolveConflict(local, remote);
+            await customerRepo.put(winner);
+          }
+        }
+      }
+
+      await metaRepo.setLastSync(res.serverTime);
+      set({ lastSyncAt: Date.now(), needsInitialSync: false });
+      // eslint-disable-next-line no-console
+      console.log(`[sync] initial sync done: ${res.changes.length} changes`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Initial sync failed';
+      set({ lastError: msg, needsInitialSync: true });
+      // eslint-disable-next-line no-console
+      console.warn('[sync] initial sync failed, will retry on reconnect:', msg);
+    } finally {
+      setSyncing(false);
+      set({ isSyncing: false });
+      await get().recomputePending();
+    }
+  },
+
   recomputePending: async () => {
     const count = await syncQueueRepo.countPending();
     set({ pendingCount: count });
@@ -198,10 +267,9 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
  * Inicializa el sync engine: listeners de network + sync periódico.
  * Llamar cuando el usuario está autenticado (NO al arrancar la app).
  *
- * Importante: NO hace un fullSync() automático al iniciar. El sync solo
- * corre cuando hay cambios pendientes (requestSync después de una mutación)
- * o cuando el network pasa de offline a online. Esto evita 401s innecesarios
- * cuando el sync engine se inicializa antes que el auth.
+ * Si el cache local está vacío (primer login, fresh install, o después de
+ * logout) → dispara un initialSync que descarga TODO el dataset del tenant.
+ * Después, las sync incrementales mantienen la UI al día.
  */
 export function initSyncEngine(): void {
   if (typeof window === 'undefined') return;
@@ -210,17 +278,29 @@ export function initSyncEngine(): void {
   // Cuando vuelve la conexión, sincronizar
   useNetworkStore.subscribe((state, prev) => {
     if (state.state === 'online' && prev.state !== 'online') {
-      void useSyncStore.getState().fullSync();
+      // Si nunca hicimos initial sync, hacerlo ahora
+      if (useSyncStore.getState().needsInitialSync) {
+        void useSyncStore.getState().initialSync();
+      } else {
+        void useSyncStore.getState().fullSync();
+      }
     }
   });
 
   // Sync periódico
   periodicSyncId = setInterval(() => {
-    void useSyncStore.getState().fullSync();
+    if (useSyncStore.getState().needsInitialSync) {
+      void useSyncStore.getState().initialSync();
+    } else {
+      void useSyncStore.getState().fullSync();
+    }
   }, PERIODIC_SYNC_MS);
 
-  // Solo computar pending count, no hacer fullSync.
-  // El primer sync viene cuando hay un cambio o cuando el user interactúa.
+  // Initial sync al iniciar (si online)
+  if (useNetworkStore.getState().state === 'online') {
+    void useSyncStore.getState().initialSync();
+  }
+  // Si está offline al iniciar, marcar para retry al reconectar
   void useSyncStore.getState().recomputePending();
 }
 

@@ -20,3 +20,4 @@ export { orderRepo } from './repos/orders.repo';
 export { customerRepo } from './repos/customers.repo';
 export { userRepo, metaRepo } from './repos/user.repo';
 export { syncQueueRepo } from './repos/sync-queue.repo';
+export { authSessionRepo, failedAttemptsRepo } from './repos/auth.repo';

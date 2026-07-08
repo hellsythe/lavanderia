@@ -3,6 +3,7 @@ import './globals.css';
 import { Providers } from '~/components/providers';
 import { AuthHydrator } from '~/components/auth-hydrator';
 import { ServiceWorkerRegistration } from '~/components/sw-registration';
+import { OfflineBanner } from '~/components/offline-banner';
 
 export const metadata: Metadata = {
   title: 'LavanderPro — Panel',
@@ -59,6 +60,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           <AuthHydrator />
           <ServiceWorkerRegistration />
+          <OfflineBanner />
           {children}
         </Providers>
       </body>

@@ -72,7 +72,17 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), HEARTBEAT_TIMEOUT_MS);
-      const res = await fetch('/api/health', {
+      // Hacemos ping a la API absoluta, no relativa. Una URL relativa
+      // iría al web estático, donde `/api/health` no existe (404 HTML)
+      // y el SW intercepta el response, marcando false positivo "offline".
+      // Usar la API_BASE configurada vía env (si no, fallback a relativo).
+      const apiBase =
+        (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) ||
+        '';
+      const healthUrl = apiBase
+        ? `${apiBase.replace(/\/$/, '')}/health`
+        : '/login.html'; // fallback a un archivo estático que existe
+      const res = await fetch(healthUrl, {
         method: 'GET',
         signal: controller.signal,
         cache: 'no-store',

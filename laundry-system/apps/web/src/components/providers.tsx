@@ -2,8 +2,9 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
-import { AuthHydrator } from './auth-hydrator';
 import { useNetworkStore } from '@lavanderpro/sync-engine';
+import { AuthHydrator } from './auth-hydrator';
+import { PinSetupGate } from './pin-setup-gate';
 
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -24,8 +25,6 @@ export function Providers({ children }: { children: ReactNode }) {
       }),
   );
 
-  // Solo init network detection. NO inicializar el sync engine aquí —
-  // el AuthHydrator lo hace después de hidratar el usuario.
   useEffect(() => {
     useNetworkStore.getState().init();
   }, []);
@@ -33,6 +32,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       <AuthHydrator />
+      <PinSetupGate />
       {children}
     </QueryClientProvider>
   );

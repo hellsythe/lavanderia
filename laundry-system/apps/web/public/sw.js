@@ -11,7 +11,7 @@
  * para que los clientes invaliden caches viejos automáticamente.
  */
 
-const CACHE_VERSION = 'v2'; // bump cuando cambia estrategia — invalida caches viejos
+const CACHE_VERSION = 'v3'; // bump cuando cambia estrategia — invalida caches viejos
 const STATIC_CACHE = `lavanderpro-static-${CACHE_VERSION}`;
 const PAGES_CACHE = `lavanderpro-pages-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `lavanderpro-runtime-${CACHE_VERSION}`;

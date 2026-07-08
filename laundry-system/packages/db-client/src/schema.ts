@@ -17,12 +17,12 @@ import Dexie, { type Table } from 'dexie';
 import type { Order, OrderItem, Service } from '@lavanderpro/shared-types';
 
 /**
- * Snapshot local del usuario actual. Solo 1 row (id='current').
+ * User — snapshot local del usuario actual. Solo 1 row (id='current').
  * Cachea datos críticos para offline-first (nombre, tenantId, role).
  * NUNCA cachea password ni token.
  */
 export interface UserSnapshot {
-  id: 'current';
+  id: string; // en la row real, 'current' — pero el tipo permite string para ergonomía
   email: string;
   name: string;
   role: string;
@@ -32,11 +32,39 @@ export interface UserSnapshot {
 }
 
 /**
- * Snapshot local del tenant. Solo 1 row (id=tenantId).
+ * AuthSession — sesión local con tokens encriptados.
+ *
+ * Flujo:
+ *  1. login online → tokens + user + tenant
+ *  2. setupPin(pin) → encripta accessToken con PBKDF2(pin) + AES-GCM
+ *  3. tokens se guardan aquí (IndexedDB, encriptado)
+ *  4. unlockWithPin(pin) → desencripta y devuelve tokens
+ *  5. La sesión se considera "locked" hasta que el user ingrese PIN
+ */
+export interface AuthSessionSnapshot {
+  id: 'current';
+  encryptedAccessToken: string; // AES-GCM ciphertext (base64)
+  iv: string;                     // initialization vector (base64)
+  refreshToken: string;          // sin encriptar (es "session unlock" — se re-pedir online)
+  user: UserSnapshot;
+  tenant: TenantSnapshot;
+  // PIN config
+  pinSalt: string;                // PBKDF2 salt (base64)
+  pinIterations: number;          // ~100k
+  pinVerifier: string;            // hash del PIN para validar sin descifrar (base64)
+  biometricEnabled: boolean;      // si el user habilitó WebAuthn
+  // Lifecycle
+  createdAt: number;              // timestamp ms
+  lastOnlineReauthAt: number;     // forzar re-auth online cada N días
+}
+
+/**
+ * TenantSnapshot — snapshot local del tenant. Solo 1 row (id=tenantId).
  */
 export interface TenantSnapshot {
   id: string;
   name: string;
+  slug: string;
   plan: string;
 }
 
@@ -109,7 +137,8 @@ export interface SyncQueueEntry {
 
 /**
  * Meta — key-value store para datos globales del cliente.
- * Keys conocidas: 'lastSync' (timestamp ms), 'lastUserId', etc.
+ * Keys conocidas: 'lastSync' (timestamp ms), 'lastUserId', 'pin-failures', etc.
+ * `value` es unknown; castear en el consumer.
  */
 export interface MetaEntry {
   key: string;
@@ -129,22 +158,29 @@ export class LavanderProDB extends Dexie {
   services!: Table<ServiceSnapshot, string>;
   syncQueue!: Table<SyncQueueEntry, string>;
   meta!: Table<MetaEntry, string>;
+  authSession!: Table<AuthSessionSnapshot, string>;
 
   constructor() {
     super('lavanderpro');
-    this.version(1).stores({
-      // Primary key + índices secundarios
-      users: 'id',
-      tenants: 'id',
-      // 'tenantId' y 'status' son índices secundarios para queries filtradas
-      orders: 'id, tenantId, status, customerId, updatedAt',
-      customers: 'id, tenantId, name, updatedAt',
-      services: 'id, tenantId, categoryId, name, updatedAt',
-      // 'dirty' para drain rápido de pending. 'entity' para filtros.
-      syncQueue: 'uuid, entity, dirty, timestamp, [entity+entityId]',
-      // 'key' es la primary key
-      meta: 'key',
-    });
+    this.version(2)
+      .stores({
+        // Primary key + índices secundarios
+        users: 'id',
+        tenants: 'id',
+        // 'tenantId' y 'status' son índices secundarios para queries filtradas
+        orders: 'id, tenantId, status, customerId, updatedAt',
+        customers: 'id, tenantId, name, updatedAt',
+        services: 'id, tenantId, categoryId, name, updatedAt',
+        // 'dirty' para drain rápido de pending. 'entity' para filtros.
+        syncQueue: 'uuid, entity, dirty, timestamp, [entity+entityId]',
+        // 'key' es la primary key
+        meta: 'key',
+        // Sesión de auth (tokens encriptados con PIN). 1 row 'current'.
+        authSession: 'id',
+      })
+      .upgrade(async (tx) => {
+        // v1 → v2: solo se crea la nueva tabla authSession, no se migran datos.
+      });
   }
 }
 
