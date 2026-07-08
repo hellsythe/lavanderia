@@ -24,6 +24,18 @@ import {
   type ServiceRepositoryPort,
 } from './ports/service-repository.port';
 
+/**
+ * Normaliza un campo opcional nullable de un UpdateInput.
+ * Si el campo es `null` → `null` (clear).
+ * Si el campo es `undefined` → no se toca (se queda el valor existente).
+ * Si el campo es un string → ese string.
+ */
+function normalizeField<T extends string | null>(input: T | null | undefined, existing: T): T {
+  if (input === null) return null as T;
+  if (input === undefined) return existing;
+  return input;
+}
+
 @Injectable()
 export class ServicesService {
   constructor(
@@ -94,11 +106,22 @@ export class ServicesService {
     return this.services.update({
       ...existing,
       name: data.name ?? existing.name,
-      categoryId:
-        data.categoryId === null
-          ? null
-          : (data.categoryId ?? existing.categoryId),
-      description: data.description === null ? null : (data.description ?? existing.description),
+      categoryId: normalizeField(data.categoryId, existing.categoryId),
+      description: normalizeField(data.description, existing.description),
+      unit: data.unit ?? existing.unit,
+      unitPrice: data.unitPrice ?? existing.unitPrice,
+      active: data.active ?? existing.active,
+    });
+  }
+        throw new ConflictException(`Ya existe un servicio activo con el nombre "${data.name}"`);
+      }
+    }
+
+    return this.services.update({
+      ...existing,
+      name: data.name ?? existing.name,
+      categoryId: normalizeField(data.categoryId, existing.categoryId),
+      description: normalizeField(data.description, existing.description),
       unit: data.unit ?? existing.unit,
       unitPrice: data.unitPrice ?? existing.unitPrice,
       active: data.active ?? existing.active,
@@ -158,7 +181,11 @@ export class ServicesService {
         throw new ConflictException(`Ya existe una categoría activa con el nombre "${data.name}"`);
       }
     }
-    return this.categories.update({ ...existing, name: data.name ?? existing.name });
+    return this.categories.update({
+      ...existing,
+      deletedAt: existing.deletedAt ?? null,
+      name: data.name ?? existing.name,
+    });
   }
 
   async softDeleteCategory(id: string, tenantId: string): Promise<void> {
