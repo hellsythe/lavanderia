@@ -29,17 +29,31 @@ COPY packages/shared-types/package.json ./packages/shared-types/
 # Install todo el workspace — pnpm crea symlinks en apps/*/node_modules/@org/*
 RUN pnpm install --frozen-lockfile --config.dangerouslyAllowAllBuilds=true
 
-# Source
+# Next.js con export estático no resuelve los symlinks en subcarpetas
+# (apps/web/node_modules/@lavanderpro/*). Forzamos que estén en node_modules
+# raíz donde Next.js sí los busca.
+RUN mkdir -p /repo/node_modules/@lavanderpro \
+ && for pkg in ui shared-types db-client sync-engine; do \
+      ln -sf ../../packages/$pkg /repo/node_modules/@lavanderpro/$pkg; \
+    done
+
+# Source — copiar todo el monorepo que web necesita
 COPY packages/ui ./packages/ui
 COPY packages/shared-types ./packages/shared-types
+COPY packages/db-client ./packages/db-client
+COPY packages/sync-engine ./packages/sync-engine
 COPY apps/web ./apps/web
 
 # ---------- Stage 2: build ----------
 FROM deps AS build
 
-# Build en orden: shared-types → ui → web
+# Build en orden: shared-types → ui → sync-engine → db-client → web
+# (db-client y sync-engine no tienen "build" — son solo .ts que se compilan
+#  en runtime, pero los necesitamos antes de web para que TS los encuentre)
 RUN cd packages/shared-types && pnpm run build
 RUN cd packages/ui && pnpm run build
+RUN cd packages/db-client && pnpm run build
+RUN cd packages/sync-engine && pnpm run build
 
 # NEXT_PUBLIC_API_URL se inyecta al build.
 ARG NEXT_PUBLIC_API_URL

@@ -196,7 +196,12 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
 
 /**
  * Inicializa el sync engine: listeners de network + sync periódico.
- * Llamar una vez al arrancar la app.
+ * Llamar cuando el usuario está autenticado (NO al arrancar la app).
+ *
+ * Importante: NO hace un fullSync() automático al iniciar. El sync solo
+ * corre cuando hay cambios pendientes (requestSync después de una mutación)
+ * o cuando el network pasa de offline a online. Esto evita 401s innecesarios
+ * cuando el sync engine se inicializa antes que el auth.
  */
 export function initSyncEngine(): void {
   if (typeof window === 'undefined') return;
@@ -214,9 +219,9 @@ export function initSyncEngine(): void {
     void useSyncStore.getState().fullSync();
   }, PERIODIC_SYNC_MS);
 
-  // Sync inicial al cargar
+  // Solo computar pending count, no hacer fullSync.
+  // El primer sync viene cuando hay un cambio o cuando el user interactúa.
   void useSyncStore.getState().recomputePending();
-  void useSyncStore.getState().fullSync();
 }
 
 export function teardownSyncEngine(): void {

@@ -3,7 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import { AuthHydrator } from './auth-hydrator';
-import { initSyncEngine, useNetworkStore } from '@lavanderpro/sync-engine';
+import { useNetworkStore } from '@lavanderpro/sync-engine';
 
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -14,10 +14,6 @@ export function Providers({ children }: { children: ReactNode }) {
             staleTime: 30_000,
             refetchOnWindowFocus: false,
             retry: 1,
-            /**
-             * Offline-first: no tirar error cuando no hay red.
-             * El queryFn debe fallar gracefully (retornar cache de Dexie).
-             */
             networkMode: 'always',
           },
           mutations: {
@@ -28,10 +24,10 @@ export function Providers({ children }: { children: ReactNode }) {
       }),
   );
 
-  // Init sync engine + network detection una sola vez al montar
+  // Solo init network detection. NO inicializar el sync engine aquí —
+  // el AuthHydrator lo hace después de hidratar el usuario.
   useEffect(() => {
     useNetworkStore.getState().init();
-    initSyncEngine();
   }, []);
 
   return (

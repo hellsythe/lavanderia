@@ -12,10 +12,16 @@ import type {
  * Respuesta cruda del backend — los tokens vienen al mismo nivel que user/tenant.
  * Refleja exactamente lo que devuelve AuthService en el API.
  */
+/**
+ * Shape real de la respuesta del backend.
+ * La API anida los tokens en `tokens` (ver AuthResult en apps/api).
+ */
 export interface AuthResponse {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+  };
   user: {
     id: string;
     tenantId: string;
@@ -72,8 +78,8 @@ function getRefreshToken(): string | null {
 }
 
 export function persistSession(data: AuthResponse): void {
-  localStorage.setItem(STORAGE_KEYS.access, data.accessToken);
-  localStorage.setItem(STORAGE_KEYS.refresh, data.refreshToken);
+  localStorage.setItem(STORAGE_KEYS.access, data.tokens.accessToken);
+  localStorage.setItem(STORAGE_KEYS.refresh, data.tokens.refreshToken);
   localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(data.user));
   localStorage.setItem(STORAGE_KEYS.tenant, JSON.stringify(data.tenant));
 }
@@ -123,10 +129,10 @@ async function refreshAccessToken(): Promise<string | null> {
       body: JSON.stringify({ refreshToken: refresh }),
     });
     if (!res.ok) return null;
-    const data = (await res.json()) as { accessToken: string; refreshToken: string };
-    localStorage.setItem(STORAGE_KEYS.access, data.accessToken);
-    localStorage.setItem(STORAGE_KEYS.refresh, data.refreshToken);
-    return data.accessToken;
+    const data = (await res.json()) as AuthResponse;
+    localStorage.setItem(STORAGE_KEYS.access, data.tokens.accessToken);
+    localStorage.setItem(STORAGE_KEYS.refresh, data.tokens.refreshToken);
+    return data.tokens.accessToken;
   } catch {
     return null;
   }
@@ -153,25 +159,34 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
     body,
   });
 
-  // Auto-refresh en 401 (excepto si es /auth/*)
+  // Auto-refresh en 401 (excepto si es /auth/*).
+  // Importante: si no hay tokens guardados, NO intentamos refresh
+  // (sería un loop infinito). Simplemente fallamos para que la UI redirija
+  // a /login naturalmente.
   if (res.status === 401 && !skipAuth && !path.startsWith('/auth/')) {
-    refreshing ??= refreshAccessToken().finally(() => {
-      refreshing = null;
-    });
-    const newToken = await refreshing;
-    if (newToken) {
-      token = newToken;
-      res = await fetch(`${API_BASE}${path}`, {
-        ...rest,
-        headers: buildHeaders(token),
-        body,
+    const hasStoredRefresh = typeof window !== 'undefined'
+      && !!localStorage.getItem(STORAGE_KEYS.refresh);
+
+    if (hasStoredRefresh) {
+      refreshing ??= refreshAccessToken().finally(() => {
+        refreshing = null;
       });
-    } else {
-      clearSession();
-      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login';
+      const newToken = await refreshing;
+      if (newToken) {
+        token = newToken;
+        res = await fetch(`${API_BASE}${path}`, {
+          ...rest,
+          headers: buildHeaders(token),
+        });
+      } else {
+        clearSession();
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login';
+        }
       }
     }
+    // Si no hay refresh token, dejamos que el 401 propague.
+    // La UI lo maneja mostrando error o redirigiendo.
   }
 
   if (!res.ok) throw await parseError(res);

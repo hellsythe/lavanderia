@@ -14,7 +14,12 @@ const nextConfig = {
   },
 
   reactStrictMode: true,
-  transpilePackages: ['@lavanderpro/ui', '@lavanderpro/shared-types'],
+  transpilePackages: [
+    '@lavanderpro/ui',
+    '@lavanderpro/shared-types',
+    '@lavanderpro/db-client',
+    '@lavanderpro/sync-engine',
+  ],
 
   // Trailing slash es recomendado para hosts estáticos (nginx) — evita
   // problemas con relative paths en sub-rutas.
