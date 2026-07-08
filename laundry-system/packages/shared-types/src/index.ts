@@ -67,10 +67,33 @@ export const CustomerSchema = z.object({
   email: z.string().email().optional(),
   address: z.string().max(200).optional(),
   notes: z.string().max(500).optional(),
+  deletedAt: TimestampSchema.nullable().optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 });
 export type Customer = z.infer<typeof CustomerSchema>;
+
+/**
+ * Input para crear un customer. El server genera id, tenantId, createdAt,
+ * updatedAt, deletedAt. Si el name ya existe activo en el tenant → 409.
+ */
+export const CreateCustomerInputSchema = z.object({
+  name: z.string().min(1).max(120),
+  phone: z.string().max(30).optional(),
+  email: z.string().email().optional().or(z.literal('')),
+  address: z.string().max(200).optional(),
+  notes: z.string().max(500).optional(),
+});
+export type CreateCustomerInput = z.infer<typeof CreateCustomerInputSchema>;
+
+export const UpdateCustomerInputSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  phone: z.string().max(30).nullable().optional(),
+  email: z.string().email().nullable().optional().or(z.literal('')),
+  address: z.string().max(200).nullable().optional(),
+  notes: z.string().max(500).nullable().optional(),
+});
+export type UpdateCustomerInput = z.infer<typeof UpdateCustomerInputSchema>;
 
 /* =========================================================================
  * Service (catálogo de servicios: lavar, planchar, etc.)

@@ -6,7 +6,9 @@ import { TenantOrmEntity } from './tenants/infrastructure/tenant.orm-entity';
 import { UserOrmEntity } from './auth/infrastructure/user.orm-entity';
 import { OrderOrmEntity } from './orders/infrastructure/order.orm-entity';
 import { OrderItemOrmEntity } from './orders/infrastructure/order-item.orm-entity';
+import { CustomerOrmEntity } from './database/entities/customer.orm-entity';
 import { AuthModule } from './auth/auth.module';
+import { CustomersModule } from './customers/customers.module';
 import { HealthModule } from './health/health.module';
 import { OrdersModule } from './orders/orders.module';
 import { TenantsModule } from './tenants/tenants.module';
@@ -28,7 +30,13 @@ import { SyncModule } from './sync/sync.module';
         username: config.get<string>('POSTGRES_USER', 'lavanderpro'),
         password: config.get<string>('POSTGRES_PASSWORD', 'lavanderpro'),
         database: config.get<string>('POSTGRES_DB', 'lavanderpro'),
-        entities: [TenantOrmEntity, UserOrmEntity, OrderOrmEntity, OrderItemOrmEntity],
+        entities: [
+          TenantOrmEntity,
+          UserOrmEntity,
+          OrderOrmEntity,
+          OrderItemOrmEntity,
+          CustomerOrmEntity,
+        ],
         migrations: ['dist/database/migrations/*.js'],
         migrationsRun: true,
         synchronize: false,
@@ -38,6 +46,7 @@ import { SyncModule } from './sync/sync.module';
     }),
     TenantsModule,
     AuthModule,
+    CustomersModule,
     OrdersModule,
     SyncModule,
     HealthModule,
