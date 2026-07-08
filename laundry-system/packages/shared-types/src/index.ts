@@ -105,12 +105,13 @@ export type ServiceUnit = z.infer<typeof ServiceUnitSchema>;
 export const ServiceSchema = z.object({
   id: UuidSchema,
   tenantId: TenantIdSchema,
-  categoryId: UuidSchema.optional(),
+  categoryId: UuidSchema.nullable().optional(),
   name: z.string().min(1).max(80),
-  description: z.string().max(300).optional(),
+  description: z.string().max(300).nullable().optional(),
   unit: ServiceUnitSchema,
   unitPrice: z.number().nonnegative(),
   active: z.boolean().default(true),
+  deletedAt: TimestampSchema.nullable().optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 });
@@ -120,10 +121,41 @@ export const ServiceCategorySchema = z.object({
   id: UuidSchema,
   tenantId: TenantIdSchema,
   name: z.string().min(1).max(60),
+  deletedAt: TimestampSchema.nullable().optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 });
 export type ServiceCategory = z.infer<typeof ServiceCategorySchema>;
+
+export const CreateServiceInputSchema = z.object({
+  categoryId: UuidSchema.nullable().optional(),
+  name: z.string().min(1).max(80),
+  description: z.string().max(300).nullable().optional(),
+  unit: ServiceUnitSchema,
+  unitPrice: z.number().nonnegative(),
+  active: z.boolean().default(true),
+});
+export type CreateServiceInput = z.infer<typeof CreateServiceInputSchema>;
+
+export const UpdateServiceInputSchema = z.object({
+  categoryId: UuidSchema.nullable().optional(),
+  name: z.string().min(1).max(80).optional(),
+  description: z.string().max(300).nullable().optional(),
+  unit: ServiceUnitSchema.optional(),
+  unitPrice: z.number().nonnegative().optional(),
+  active: z.boolean().optional(),
+});
+export type UpdateServiceInput = z.infer<typeof UpdateServiceInputSchema>;
+
+export const CreateServiceCategoryInputSchema = z.object({
+  name: z.string().min(1).max(60),
+});
+export type CreateServiceCategoryInput = z.infer<typeof CreateServiceCategoryInputSchema>;
+
+export const UpdateServiceCategoryInputSchema = z.object({
+  name: z.string().min(1).max(60).optional(),
+});
+export type UpdateServiceCategoryInput = z.infer<typeof UpdateServiceCategoryInputSchema>;
 
 /* =========================================================================
  * Order (pedido / orden)
