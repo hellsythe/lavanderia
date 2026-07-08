@@ -30,7 +30,11 @@ let intervalId: ReturnType<typeof setInterval> | null = null;
 let inited = false;
 
 export const useNetworkStore = create<NetworkStore>((set, get) => ({
-  state: typeof navigator !== 'undefined' && navigator.onLine ? 'online' : 'offline',
+  // Empezamos en 'offline' hasta confirmar. Esto evita el flash del banner
+  // cuando `navigator.onLine` retorna `false` por extensiones o configuración
+  // del browser pero en realidad hay red. El recheck inmediato en `init()`
+  // confirma el estado real.
+  state: 'offline',
   lastHeartbeat: 0,
 
   init: () => {
@@ -44,6 +48,11 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     window.addEventListener('offline', () => {
       set({ state: 'offline' });
     });
+
+    // Recheck INMEDIATO para confirmar el estado real de la red.
+    // Sin esto, el banner aparece durante los primeros 30s en localhost
+    // si el browser no detecta la red correctamente.
+    void get().recheck();
 
     intervalId = setInterval(() => {
       void get().recheck();
