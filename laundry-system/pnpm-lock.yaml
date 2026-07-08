@@ -126,9 +126,15 @@ importers:
       '@hookform/resolvers':
         specifier: ^3.10.0
         version: 3.10.0(react-hook-form@7.81.0(react@18.3.1))
+      '@lavanderpro/db-client':
+        specifier: workspace:*
+        version: link:../../packages/db-client
       '@lavanderpro/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
+      '@lavanderpro/sync-engine':
+        specifier: workspace:*
+        version: link:../../packages/sync-engine
       '@lavanderpro/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -150,6 +156,9 @@ importers:
       react-hook-form:
         specifier: ^7.54.2
         version: 7.81.0(react@18.3.1)
+      uuid:
+        specifier: ^11.0.5
+        version: 11.1.1
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -185,6 +194,22 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  packages/db-client:
+    dependencies:
+      '@lavanderpro/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+      dexie:
+        specifier: ^4.0.10
+        version: 4.4.4
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.5
+        version: 22.20.0
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
   packages/shared-types:
     dependencies:
       zod:
@@ -194,6 +219,31 @@ importers:
       '@types/node':
         specifier: ^22.10.5
         version: 22.20.0
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
+  packages/sync-engine:
+    dependencies:
+      '@lavanderpro/db-client':
+        specifier: workspace:*
+        version: link:../db-client
+      '@lavanderpro/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+      uuid:
+        specifier: ^11.0.5
+        version: 11.1.1
+      zustand:
+        specifier: ^5.0.2
+        version: 5.0.14(@types/react@18.3.31)(react@18.3.1)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.5
+        version: 22.20.0
+      '@types/uuid':
+        specifier: ^10.0.0
+        version: 10.0.0
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -935,6 +985,9 @@ packages:
 
   '@types/supertest@6.0.3':
     resolution: {integrity: sha512-8WzXq62EXFhJ7QsH3Ocb/iKQ/Ty9ZVWnVzoTKc9tyyFRRF3a74Tk2+TLFgaFFw364Ere+npzHKEJ6ga2LzIL7w==}
+
+  '@types/uuid@10.0.0':
+    resolution: {integrity: sha512-7gqG38EyHgyP1S+7+xomFtL+ZNHcKv6DwNaCZmJmo1vgMugyF3TCnXVg4t1uk89mLNwnLtnY3TpOpCOyp1/xHQ==}
 
   '@types/validator@13.15.10':
     resolution: {integrity: sha512-T8L6i7wCuyoK8A/ZeLYt1+q0ty3Zb9+qbSSvrIVitzT3YjZqkTZ40IbRsPanlB4h1QB3JVL1SYCdR6ngtFYcuA==}
@@ -1705,6 +1758,9 @@ packages:
 
   detect-node-es@1.1.0:
     resolution: {integrity: sha512-ypdmJU/TbBby2Dxibuv7ZLW3Bs1QEmM7nHjEANfohJLvE0XVujisn1qPJcZxg+qDucsr+bP6fLD1rPS3AhJ7EQ==}
+
+  dexie@4.4.4:
+    resolution: {integrity: sha512-jIwsYI8Os2hgnqc6O49YwFDKGc5v5QjGx0wPVp543ip1F53VFAKMLthV2pQosQcVTv3eAskTWYspOx195PM0FQ==}
 
   dezalgo@1.0.4:
     resolution: {integrity: sha512-rXSP0bf+5n0Qonsb+SVVfNfIsimO4HEtmnIpPHY8Q1UCzKlQrDMfdobr8nJOOsRgWCyMRqeSBQzmWUMq7zvVig==}
@@ -4605,6 +4661,8 @@ snapshots:
       '@types/methods': 1.1.4
       '@types/superagent': 8.1.10
 
+  '@types/uuid@10.0.0': {}
+
   '@types/validator@13.15.10': {}
 
   '@typescript-eslint/eslint-plugin@8.62.1(@typescript-eslint/parser@8.62.1(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)':
@@ -5377,6 +5435,8 @@ snapshots:
   detect-libc@2.1.2: {}
 
   detect-node-es@1.1.0: {}
+
+  dexie@4.4.4: {}
 
   dezalgo@1.0.4:
     dependencies:

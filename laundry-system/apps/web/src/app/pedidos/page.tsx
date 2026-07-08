@@ -76,9 +76,9 @@ export default function PedidosPage() {
     [filter, page],
   );
 
-  const { data, isLoading, error } = useOrders(apiParams);
+  const { data: orders = [], isLoading, error } = useOrders(apiParams);
 
-  const total = data?.total ?? 0;
+  const total = orders.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const handleChange = (order: Order, to: OrderStatus) => {
@@ -145,14 +145,14 @@ export default function PedidosPage() {
                       </tr>
                     </TableHeader>
                     <TableBody>
-                      {data?.items.map((o) => {
+                      {orders.map((o) => {
                         const itemsCount = o.items.length;
                         const pieces = o.items.reduce(
-                          (sum, i) => sum + (i.unit === 'piece' ? i.quantity : 0),
+                          (sum: number, i) => sum + (i.unit === 'piece' ? i.quantity : 0),
                           0,
                         );
                         const kg = o.items.reduce(
-                          (sum, i) => sum + (i.unit === 'kg' ? i.quantity : 0),
+                          (sum: number, i) => sum + (i.unit === 'kg' ? i.quantity : 0),
                           0,
                         );
                         const next = NEXT_STATUS[o.status];

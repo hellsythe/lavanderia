@@ -156,12 +156,11 @@ function KpiStrip() {
 
 function ActiveOrdersCard() {
   const [filter, setFilter] = useState<'all' | 'in_process' | 'ready' | 'received'>('all');
-  const { data, isLoading } = useOrders({
+  const { data: orders = [], isLoading } = useOrders({
     status: filter === 'all' ? ['in_process', 'ready', 'received'] : [filter],
     limit: 20,
   });
-  const orders = data?.items ?? [];
-  const total = data?.total ?? 0;
+  const total = orders.length;
 
   return (
     <Card>
@@ -204,7 +203,7 @@ function ActiveOrdersCard() {
               </tr>
             </TableHeader>
             <TableBody>
-              {orders.map((o) => (
+              {(orders ?? []).map((o) => (
                 <ActiveOrderRow key={o.id} order={o} />
               ))}
             </TableBody>
@@ -271,15 +270,14 @@ function ActiveOrderRow({ order }: { order: Order }) {
 /* --------------------------- Recent History --------------------------- */
 
 function RecentHistoryCard() {
-  const { data, isLoading } = useOrders({ status: ['delivered'], limit: 5 });
-  const delivered = data?.items ?? [];
+  const { data: delivered = [], isLoading } = useOrders({ status: ['delivered'], limit: 5 });
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Pedidos Entregados Recientes</CardTitle>
         <CardMeta>
-          {isLoading ? '…' : `${data?.total ?? 0} en el último mes`}
+          {isLoading ? '…' : `${delivered.length} en el último mes`}
         </CardMeta>
       </CardHeader>
       <CardBody className="p-0">
@@ -302,7 +300,7 @@ function RecentHistoryCard() {
                 </tr>
               </TableHeader>
               <TableBody>
-                {delivered.map((o) => (
+                {(delivered ?? []).map((o) => (
                   <TableRow key={o.id}>
                     <TableCell className="font-mono text-[12px] text-muted">
                       {o.code}
@@ -330,8 +328,8 @@ function RecentHistoryCard() {
             </Table>
             <Pagination
               page={1}
-              totalPages={Math.max(1, Math.ceil((data?.total ?? 0) / 5))}
-              total={data?.total ?? 0}
+              totalPages={Math.max(1, Math.ceil(delivered.length / 5))}
+              total={delivered.length}
               onPageChange={() => {
                 /* TODO: paginación real cuando se implemente reportes */
               }}

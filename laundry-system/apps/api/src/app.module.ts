@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { OrdersModule } from './orders/orders.module';
 import { TenantsModule } from './tenants/tenants.module';
+import { SyncModule } from './sync/sync.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { TenantsModule } from './tenants/tenants.module';
     TenantsModule,
     AuthModule,
     OrdersModule,
+    SyncModule,
     HealthModule,
   ],
 })
