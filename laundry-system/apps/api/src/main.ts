@@ -4,8 +4,11 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const allowedOrigins = (process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:3000'])
+    .map((o) => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
   app.enableCors({
-    origin: process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:3000'],
+    origin: allowedOrigins,
     credentials: true,
   });
   app.useGlobalPipes(

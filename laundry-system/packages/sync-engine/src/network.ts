@@ -81,16 +81,16 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), HEARTBEAT_TIMEOUT_MS);
-      // Hacemos ping a la API absoluta, no relativa. Una URL relativa
-      // iría al web estático, donde `/api/health` no existe (404 HTML)
-      // y el SW intercepta el response, marcando false positivo "offline".
-      // Usar la API_BASE configurada vía env (si no, fallback a relativo).
-      const apiBase =
-        (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) ||
-        '';
-      const healthUrl = apiBase
-        ? `${apiBase.replace(/\/$/, '')}/health`
-        : '/login.html'; // fallback a un archivo estático que existe
+      // Ping a un archivo estático del mismo origen. NO al backend.
+// Razón: el detector de online/offline debe responder a "¿tengo red?",
+// no a "¿mi API responde?". Son ortogonales: puedes tener WiFi con el
+// API caído, o sin backend en dev local — en ambos casos la red está OK.
+// La salud del API la verifica el sync engine antes de cada POST/PULL,
+// no este heartbeat.
+//
+// `/manifest.json` existe en dev (`next dev` sirve `public/`) y en prod
+// (nginx sirviendo `out/`), y es brand-neutral.
+      const healthUrl = '/manifest.json';
       const res = await fetch(healthUrl, {
         method: 'GET',
         signal: controller.signal,
