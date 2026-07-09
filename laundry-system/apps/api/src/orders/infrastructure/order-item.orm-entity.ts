@@ -12,36 +12,46 @@ import {
 import { OrderOrmEntity } from './order.orm-entity';
 
 @Entity({ name: 'order_items' })
+// IMPORTANTE: @Index usa nombres de PROPIEDAD, no de columna. TypeORM
+// los traduce al nombre real de la columna (que puede ser snake_case
+// via `name:` en @Column). Si pones el nombre de la columna directo
+// (snake_case) TypeORM lo busca en la entity metadata y falla.
 @Index(['orderId'])
 export class OrderItemOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid' })
+  // Columnas en snake_case en la DB (migration 1700000001000).
+  // Especificar `name:` explícitamente para que TypeORM no use el
+  // nombre de propiedad (camelCase) en queries auto-generadas.
+  // Patrón: SOLO @Column con name, SIN @JoinColumn duplicado.
+  // TypeORM detecta la relación por el @ManyToOne y crea la FK column
+  // a partir del @Column.
+  @Column({ name: 'order_id', type: 'uuid' })
   orderId!: string;
 
   @ManyToOne(() => OrderOrmEntity, (o) => o.items, { onDelete: 'CASCADE' })
-  @JoinColumn()
+  @JoinColumn({ name: 'order_id', referencedColumnName: 'id' })
   order?: OrderOrmEntity;
 
-  @Column({ type: 'uuid' })
+  @Column({ name: 'service_id', type: 'uuid' })
   serviceId!: string;
 
-  @Column({ type: 'varchar', length: 80 })
+  @Column({ name: 'service_name', type: 'varchar', length: 80 })
   serviceName!: string;
 
-  @Column({ type: 'enum', enum: ['kg', 'piece'] })
+  @Column({ name: 'unit', type: 'enum', enum: ['kg', 'piece'] })
   unit!: 'kg' | 'piece';
 
-  @Column({ type: 'numeric', precision: 12, scale: 3 })
+  @Column({ name: 'quantity', type: 'numeric', precision: 12, scale: 3 })
   quantity!: string;
 
-  @Column({ type: 'numeric', precision: 12, scale: 2 })
+  @Column({ name: 'unit_price', type: 'numeric', precision: 12, scale: 2 })
   unitPrice!: string;
 
-  @Column({ type: 'numeric', precision: 12, scale: 2 })
+  @Column({ name: 'subtotal', type: 'numeric', precision: 12, scale: 2 })
   subtotal!: string;
 
-  @Column({ type: 'varchar', length: 200, nullable: true })
+  @Column({ name: 'notes', type: 'varchar', length: 200, nullable: true })
   notes?: string;
 }

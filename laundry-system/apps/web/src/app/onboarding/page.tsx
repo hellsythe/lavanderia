@@ -1,5 +1,6 @@
 'use client';
 
+import { Spinner } from '@lavanderpro/ui';
 import dynamic from 'next/dynamic';
 
 /**
@@ -16,7 +17,7 @@ const OnboardingContent = dynamic(
     ssr: false,
     loading: () => (
       <main className="min-h-screen bg-canvas flex items-center justify-center">
-        <span className="inline-block h-8 w-8 border-2 border-muted/30 border-t-accent rounded-full animate-spin" />
+        <Spinner size="xl" />
       </main>
     ),
   },

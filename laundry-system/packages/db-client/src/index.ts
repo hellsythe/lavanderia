@@ -10,6 +10,7 @@ export type {
   TenantSnapshot,
   CustomerSnapshot,
   ServiceSnapshot,
+  CategorySnapshot,
   OrderSnapshot,
   SyncQueueEntry,
   MetaEntry,
@@ -21,3 +22,5 @@ export { customerRepo } from './repos/customers.repo';
 export { userRepo, metaRepo } from './repos/user.repo';
 export { syncQueueRepo } from './repos/sync-queue.repo';
 export { authSessionRepo, failedAttemptsRepo } from './repos/auth.repo';
+export { categoryRepo } from './repos/categories.repo';
+export { serviceRepo } from './repos/services.repo';

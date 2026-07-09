@@ -9,9 +9,14 @@
  *
  * Cache versioning: bump CACHE_NAME cuando cambies estrategia
  * para que los clientes invaliden caches viejos automáticamente.
+ *
+ * Flujo de update: NO skipWaiting() automático. El cliente (página) decide
+ * cuándo activarlo vía postMessage({type: 'SKIP_WAITING'}) después de
+ * detectar un nuevo worker (evento 'updatefound'). Cuando el SW activa,
+ * 'controllerchange' dispara un reload() en la página → bundle nuevo.
  */
 
-const CACHE_VERSION = 'v4'; // bump cuando cambia estrategia — invalida caches viejos
+const CACHE_VERSION = 'v5'; // bump cuando cambia estrategia — invalida caches viejos
 const STATIC_CACHE = `lavanderpro-static-${CACHE_VERSION}`;
 const PAGES_CACHE = `lavanderpro-pages-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `lavanderpro-runtime-${CACHE_VERSION}`;
@@ -35,7 +40,10 @@ self.addEventListener('install', (event) => {
       await cache.addAll(PRECACHE_URLS).catch((e) => {
         console.warn('[SW] Precache failed:', e);
       });
-      await self.skipWaiting();
+      // NO skipWaiting() automático: el cliente decide cuándo activarnos
+      // para evitar el bug "stale bundle tras update" (la página seguía
+      // corriendo el JS viejo cacheado mientras el SW nuevo tomaba control).
+      // El cliente nos manda postMessage({type: 'SKIP_WAITING'}) cuando está listo.
     })(),
   );
 });
@@ -45,13 +53,16 @@ self.addEventListener('activate', (event) => {
   console.log('[SW] Activating');
   event.waitUntil(
     (async () => {
-      // Limpiar caches viejos
+      // Limpiar caches viejos (de versiones anteriores a CACHE_VERSION).
       const cacheNames = await caches.keys();
       await Promise.all(
         cacheNames
           .filter((name) => !name.endsWith(`-${CACHE_VERSION}`))
           .map((name) => caches.delete(name)),
       );
+      // Tomar control de clientes no controlados (clientes que ya estaban
+      // cargados antes de nuestra activación). Es seguro hacerlo aquí porque
+      // ya no tenemos `skipWaiting()` — este SW es el que el cliente eligió.
       await self.clients.claim();
     })(),
   );
@@ -132,7 +143,9 @@ async function staleWhileRevalidate(request, cacheName) {
   return cached || fetchPromise;
 }
 
-// Mensaje desde la app (skipWaiting, etc.)
+// Mensaje desde la app (skipWaiting, etc.).
+// El cliente envía SKIP_WAITING solo cuando está listo (ej: detectó un
+// updatefound y quiere forzar la activación).
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();

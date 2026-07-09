@@ -124,6 +124,8 @@ export const ServiceSchema = z.object({
   description: z.string().max(300).nullable().optional(),
   unit: ServiceUnitSchema,
   unitPrice: z.number().nonnegative(),
+  /** Cantidad mínima al cargar este servicio en un pedido. Default 1. */
+  minQuantity: z.number().int().min(1).default(1),
   active: z.boolean().default(true),
   deletedAt: TimestampSchema.nullable().optional(),
   createdAt: TimestampSchema,
@@ -147,6 +149,8 @@ export const CreateServiceInputSchema = z.object({
   description: z.string().max(300).nullable().optional(),
   unit: ServiceUnitSchema,
   unitPrice: z.number().nonnegative(),
+  /** Default 1. Validación: integer >= 1. */
+  minQuantity: z.number().int().min(1).default(1),
   active: z.boolean().default(true),
 });
 export type CreateServiceInput = z.infer<typeof CreateServiceInputSchema>;
@@ -157,6 +161,7 @@ export const UpdateServiceInputSchema = z.object({
   description: z.string().max(300).nullable().optional(),
   unit: ServiceUnitSchema.optional(),
   unitPrice: z.number().nonnegative().optional(),
+  minQuantity: z.number().int().min(1).optional(),
   active: z.boolean().optional(),
 });
 export type UpdateServiceInput = z.infer<typeof UpdateServiceInputSchema>;

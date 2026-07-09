@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Button, Input, Label, PasswordInput } from '@lavanderpro/ui';
+import { Button, Input, Label, PasswordInput, Spinner } from '@lavanderpro/ui';
 import { LoginInputSchema, type LoginInput } from '@lavanderpro/shared-types';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
@@ -27,7 +27,7 @@ const LoginPageContent = dynamic(() => import('./login-content').then((m) => m.L
     <main id="main">
       <AuthShell title="Iniciar sesión" subtitle="Accede al panel de control de tu lavandería.">
         <div className="flex justify-center py-8">
-          <span className="inline-block h-4 w-4 border-2 border-muted/40 border-t-accent rounded-full animate-spin" />
+          <Spinner size="md" />
         </div>
       </AuthShell>
     </main>

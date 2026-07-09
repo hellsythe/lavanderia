@@ -1,5 +1,6 @@
 'use client';
 
+import { Spinner } from '@lavanderpro/ui';
 import { useEffect, useState, type ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '~/stores/auth-store';
@@ -56,7 +57,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-canvas">
         <div className="flex flex-col items-center gap-3">
-          <span className="inline-block h-8 w-8 border-2 border-muted/30 border-t-accent rounded-full animate-spin" />
+          <Spinner size="xl" />
           <span className="text-meta text-muted">Cargando…</span>
         </div>
       </div>

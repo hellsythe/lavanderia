@@ -16,15 +16,19 @@
 import { v7 as uuidv7 } from 'uuid';
 import { create } from 'zustand';
 import {
+  categoryRepo,
   customerRepo,
   metaRepo,
   orderRepo,
+  serviceRepo,
   syncQueueRepo,
+  type ServiceSnapshot,
 } from '@lavanderpro/db-client';
 import type {
   Order,
   Customer,
   Service,
+  ServiceCategory,
   SyncChange,
   SyncOperation,
   SyncPullResponse,
@@ -156,6 +160,11 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
         if (change.tombstone) {
           if (change.entity === 'order') await orderRepo.delete(change.entityId);
           else if (change.entity === 'customer') await customerRepo.delete(change.entityId);
+          else if (change.entity === 'service_category') {
+            // Tombstone = delete. Borramos local para limpiar.
+            const snap = await categoryRepo.findById(change.entityId);
+            if (snap) await categoryRepo.softDeleteLocal(change.entityId);
+          }
           continue;
         }
 
@@ -176,8 +185,24 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
             const winner = resolveConflict(local, remote);
             await customerRepo.put(winner);
           }
+        } else if (change.entity === 'service_category') {
+          const local = await categoryRepo.findById(change.entityId);
+          const remote = change.payload as ServiceCategory;
+          if (!local) {
+            await categoryRepo.put(remote);
+          } else {
+            const winner = resolveConflict(local, remote);
+            await categoryRepo.put(winner);
+          }
         } else if (change.entity === 'service') {
-          // TODO: serviceRepo cuando exista
+          const local = await serviceRepo.findById(change.entityId);
+          const remote = change.payload as unknown as ServiceSnapshot;
+          if (!local) {
+            await serviceRepo.put(remote);
+          } else {
+            const winner = resolveConflict(local, remote);
+            await serviceRepo.put(winner);
+          }
         }
       }
 
@@ -254,6 +279,12 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
             const winner = resolveConflict(local, remote);
             await customerRepo.put(winner);
           }
+        } else if (change.entity === 'service_category') {
+          const remote = change.payload as ServiceCategory;
+          await categoryRepo.put(remote);
+        } else if (change.entity === 'service') {
+          const remote = change.payload as unknown as ServiceSnapshot;
+          await serviceRepo.put(remote);
         }
       }
 
@@ -264,6 +295,7 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Initial sync failed';
       set({ lastError: msg, needsInitialSync: true });
+      reportFailure();
       // eslint-disable-next-line no-console
       console.warn('[sync] initial sync failed, will retry on reconnect:', msg);
     } finally {
@@ -293,7 +325,11 @@ export function initSyncEngine(): void {
 
   // Cuando vuelve la conexión, sincronizar
   useNetworkStore.subscribe((state, prev) => {
-    if (state.state === 'online' && prev.state !== 'online') {
+    // Solo disparar en la transición offline → online (recuperación real).
+    // El cambio previo `state !== 'online'` también disparaba en
+    // syncing → online, causando un loop infinito: cada sync exitosa
+    // re-disparaba otro sync. Ahora: solo en recovery real.
+    if (state.state === 'online' && prev.state === 'offline') {
       // Si nunca hicimos initial sync, hacerlo ahora
       if (useSyncStore.getState().needsInitialSync) {
         void useSyncStore.getState().initialSync();

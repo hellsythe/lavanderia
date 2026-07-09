@@ -337,12 +337,18 @@ export const ordersApi = {
 // Necesitamos los types aquí también
 import type {
   CreateOrderInput,
+  CreateServiceCategoryInput,
+  CreateServiceInput,
   OnboardingStepInput,
   Order,
   OrderStatus,
   LoginInput,
   RegisterInput,
+  Service,
+  ServiceCategory,
   Tenant,
+  UpdateServiceCategoryInput,
+  UpdateServiceInput,
 } from '@lavanderpro/shared-types';
 
 // Tenants-specific helpers
@@ -355,5 +361,69 @@ export const tenantsApi = {
     apiRequest<Tenant>(`/tenants/${id}/onboarding`, {
       method: 'PATCH',
       json: input,
+    }),
+};
+
+// Service Catalog helpers
+// Los servicios se exponen bajo /services/* en el backend (están acoplados
+// al módulo services porque services.categoryId referencia service_categories).
+export interface ListServicesParams {
+  categoryId?: string;
+  onlyActive?: boolean;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ListServicesResponse {
+  items: Service[];
+  total: number;
+}
+
+export const servicesApi = {
+  list: (params: ListServicesParams = {}) => {
+    const search = new URLSearchParams();
+    if (params.categoryId) search.set('categoryId', params.categoryId);
+    if (params.onlyActive !== undefined) search.set('onlyActive', String(params.onlyActive));
+    if (params.search) search.set('search', params.search);
+    if (params.limit !== undefined) search.set('limit', String(params.limit));
+    if (params.offset !== undefined) search.set('offset', String(params.offset));
+    const qs = search.toString();
+    return apiRequest<ListServicesResponse>(`/services${qs ? `?${qs}` : ''}`);
+  },
+  get: (id: string) => apiRequest<Service>(`/services/${id}`),
+  create: (input: CreateServiceInput) =>
+    apiRequest<Service>('/services', { method: 'POST', json: input }),
+  update: (id: string, input: UpdateServiceInput) =>
+    apiRequest<Service>(`/services/${id}`, { method: 'PATCH', json: input }),
+  remove: (id: string) => apiRequest<void>(`/services/${id}`, { method: 'DELETE' }),
+};
+
+// Service Categories helpers
+// Las categorías se exponen bajo /services/categories/* en el backend
+// (están acopladas al módulo services porque services.categoryId las referencia).
+export const categoriesApi = {
+  list: (params: { limit?: number; offset?: number } = {}) => {
+    const search = new URLSearchParams();
+    if (params.limit !== undefined) search.set('limit', String(params.limit));
+    if (params.offset !== undefined) search.set('offset', String(params.offset));
+    const qs = search.toString();
+    return apiRequest<{ items: ServiceCategory[]; total: number }>(
+      `/services/categories/all${qs ? `?${qs}` : ''}`,
+    );
+  },
+  create: (input: CreateServiceCategoryInput) =>
+    apiRequest<ServiceCategory>('/services/categories', {
+      method: 'POST',
+      json: input,
+    }),
+  update: (id: string, input: UpdateServiceCategoryInput) =>
+    apiRequest<ServiceCategory>(`/services/categories/${id}`, {
+      method: 'PATCH',
+      json: input,
+    }),
+  remove: (id: string) =>
+    apiRequest<void>(`/services/categories/${id}`, {
+      method: 'DELETE',
     }),
 };

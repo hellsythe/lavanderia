@@ -92,9 +92,28 @@ export interface ServiceSnapshot {
   id: string;
   tenantId: string;
   name: string;
-  categoryId?: string;
+  description?: string | null;
+  categoryId?: string | null;
   unit: 'kg' | 'piece';
   unitPrice: number;
+  minQuantity: number;
+  active: boolean;
+  deletedAt?: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * ServiceCategory cached.
+ * Sincronizada via /sync/changes (offline-first).
+ * Soft-deleted vía `deletedAt` (tombstone preservado para LWW).
+ */
+export interface CategorySnapshot {
+  id: string;
+  tenantId: string;
+  name: string;
+  deletedAt?: number | null;
+  createdAt: number;
   updatedAt: number;
 }
 
@@ -127,7 +146,7 @@ export interface OrderSnapshot {
  */
 export interface SyncQueueEntry {
   uuid: string;          // UUID v7 client-generated
-  entity: 'order' | 'customer' | 'service';
+  entity: 'order' | 'customer' | 'service' | 'service_category';
   entityId: string;
   op: 'create' | 'update' | 'delete';
   payload: unknown;      // datos a enviar al server
@@ -158,13 +177,14 @@ export class LavanderProDB extends Dexie {
   orders!: Table<OrderSnapshot, string>;
   customers!: Table<CustomerSnapshot, string>;
   services!: Table<ServiceSnapshot, string>;
+  categories!: Table<CategorySnapshot, string>;
   syncQueue!: Table<SyncQueueEntry, string>;
   meta!: Table<MetaEntry, string>;
   authSession!: Table<AuthSessionSnapshot, string>;
 
   constructor() {
     super('lavanderpro');
-    this.version(2)
+    this.version(3)
       .stores({
         // Primary key + índices secundarios
         users: 'id',
@@ -173,6 +193,8 @@ export class LavanderProDB extends Dexie {
         orders: 'id, tenantId, status, customerId, updatedAt',
         customers: 'id, tenantId, name, updatedAt',
         services: 'id, tenantId, categoryId, name, updatedAt',
+        // v3: tabla categories para sync offline-first de categorías
+        categories: 'id, tenantId, name, updatedAt',
         // 'dirty' para drain rápido de pending. 'entity' para filtros.
         syncQueue: 'uuid, entity, dirty, timestamp, [entity+entityId]',
         // 'key' es la primary key
@@ -182,6 +204,7 @@ export class LavanderProDB extends Dexie {
       })
       .upgrade(async (tx) => {
         // v1 → v2: solo se crea la nueva tabla authSession, no se migran datos.
+        // v2 → v3: solo se crea la tabla categories, no se migran datos.
       });
   }
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Button, Input, Label, PasswordInput } from '@lavanderpro/ui';
+import { Button, Input, Label, PasswordInput, Spinner } from '@lavanderpro/ui';
 import { LoginInputSchema, type LoginInput } from '@lavanderpro/shared-types';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -182,7 +182,7 @@ export function LoginContent() {
           >
             {submitting ? (
               <>
-                <span className="inline-block h-3.5 w-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                <Spinner size="sm" tone="inverse" />
                 Iniciando sesión…
               </>
             ) : (

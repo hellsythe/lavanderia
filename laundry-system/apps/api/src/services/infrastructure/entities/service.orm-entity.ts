@@ -12,6 +12,8 @@ import { TenantOrmEntity } from '../../../tenants/infrastructure/tenant.orm-enti
 import { ServiceCategoryOrmEntity } from './service-category.orm-entity';
 
 @Entity({ name: 'services' })
+// @Index usa nombres de PROPIEDAD. TypeORM los traduce al nombre real
+// de la columna (snake_case via @Column.name).
 @Index(['tenantId', 'categoryId'])
 @Index(['tenantId', 'name'])
 @Index(['tenantId', 'deletedAt'])
@@ -19,41 +21,47 @@ export class ServiceOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid' })
+  // Columnas en snake_case en la DB (migration 1700000003000).
+  // Especificar `name:` explícitamente para que TypeORM no use el
+  // nombre de propiedad (camelCase) en queries auto-generadas.
+  @Column({ name: 'tenant_id', type: 'uuid' })
   tenantId!: string;
 
   @ManyToOne(() => TenantOrmEntity, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'tenantId' })
+  @JoinColumn({ name: 'tenant_id' })
   tenant?: TenantOrmEntity;
 
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ name: 'category_id', type: 'uuid', nullable: true })
   categoryId?: string | null;
 
   @ManyToOne(() => ServiceCategoryOrmEntity, { onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'categoryId' })
+  @JoinColumn({ name: 'category_id' })
   category?: ServiceCategoryOrmEntity | null;
 
-  @Column({ type: 'varchar', length: 80 })
+  @Column({ name: 'name', type: 'varchar', length: 80 })
   name!: string;
 
-  @Column({ type: 'varchar', length: 300, nullable: true })
+  @Column({ name: 'description', type: 'varchar', length: 300, nullable: true })
   description?: string | null;
 
-  @Column({ type: 'enum', enum: ['kg', 'piece'] })
+  @Column({ name: 'unit', type: 'enum', enum: ['kg', 'piece'] })
   unit!: 'kg' | 'piece';
 
-  @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })
+  @Column({ name: 'unit_price', type: 'numeric', precision: 12, scale: 2, default: 0 })
   unitPrice!: string;
 
-  @Column({ type: 'boolean', default: true })
+  @Column({ name: 'min_quantity', type: 'int', default: 1 })
+  minQuantity!: number;
+
+  @Column({ name: 'active', type: 'boolean', default: true })
   active!: boolean;
 
-  @Column({ type: 'timestamptz', nullable: true, default: null })
+  @Column({ name: 'deleted_at', type: 'timestamptz', nullable: true, default: null })
   deletedAt?: Date | null;
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
 }

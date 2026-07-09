@@ -10,6 +10,8 @@ export interface Service {
   description: string | null;
   unit: 'kg' | 'piece';
   unitPrice: number;
+  /** Cantidad mínima al cargar este servicio en un pedido. Default 1. */
+  minQuantity: number;
   active: boolean;
   deletedAt: number | null;
   createdAt: number;

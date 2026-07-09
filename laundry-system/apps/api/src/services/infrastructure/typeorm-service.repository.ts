@@ -11,7 +11,7 @@ import {
 } from '../ports/service-repository.port';
 
 const SERVICE_COLS =
-  'id, tenant_id, category_id, name, description, unit, unit_price, active, deleted_at, created_at, updated_at';
+  'id, tenant_id, category_id, name, description, unit, unit_price, min_quantity, active, deleted_at, created_at, updated_at';
 
 function toDomain(row: Record<string, unknown>): Service {
   return {
@@ -22,6 +22,7 @@ function toDomain(row: Record<string, unknown>): Service {
     description: (row.description as string) || null,
     unit: row.unit as 'kg' | 'piece',
     unitPrice: Number(row.unit_price),
+    minQuantity: row.min_quantity != null ? Number(row.min_quantity) : 1,
     active: row.active as boolean,
     deletedAt: row.deleted_at ? new Date(row.deleted_at as string).getTime() : null,
     createdAt: new Date(row.created_at as string).getTime(),
@@ -99,8 +100,8 @@ export class TypeormServiceRepository implements ServiceRepositoryPort {
     service: Omit<Service, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>,
   ): Promise<Service> {
     const result = await this.repo.manager.query(
-      `INSERT INTO services (tenant_id, category_id, name, description, unit, unit_price, active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO services (tenant_id, category_id, name, description, unit, unit_price, min_quantity, active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING ${SERVICE_COLS}`,
       [
         service.tenantId,
@@ -109,6 +110,7 @@ export class TypeormServiceRepository implements ServiceRepositoryPort {
         service.description,
         service.unit,
         service.unitPrice.toFixed(2),
+        service.minQuantity ?? 1,
         service.active,
       ],
     );
@@ -120,7 +122,7 @@ export class TypeormServiceRepository implements ServiceRepositoryPort {
   async update(service: Service): Promise<Service> {
     const result = await this.repo.manager.query(
       `UPDATE services
-       SET name = $3, category_id = $4, description = $5, unit = $6, unit_price = $7, active = $8
+       SET name = $3, category_id = $4, description = $5, unit = $6, unit_price = $7, min_quantity = $8, active = $9
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
        RETURNING ${SERVICE_COLS}`,
       [
@@ -131,6 +133,7 @@ export class TypeormServiceRepository implements ServiceRepositoryPort {
         service.description,
         service.unit,
         service.unitPrice.toFixed(2),
+        service.minQuantity,
         service.active,
       ],
     );

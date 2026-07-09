@@ -76,6 +76,7 @@ export class ServicesService {
       description: data.description ?? null,
       unit: data.unit,
       unitPrice: data.unitPrice,
+      minQuantity: data.minQuantity,
       active: data.active,
     });
   }
@@ -110,6 +111,7 @@ export class ServicesService {
       name: data.name ?? existing.name,
       unit: data.unit ?? existing.unit,
       unitPrice: data.unitPrice ?? existing.unitPrice,
+      minQuantity: data.minQuantity ?? existing.minQuantity,
       active: data.active ?? existing.active,
       deletedAt: existing.deletedAt,
       createdAt: existing.createdAt,

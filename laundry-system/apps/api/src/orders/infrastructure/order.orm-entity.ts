@@ -14,46 +14,52 @@ export class OrderOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  // Columnas en snake_case en la DB (migration 1700000001000).
+  // Especificar `name:` explícitamente para que TypeORM no use el
+  // nombre de propiedad (camelCase) en queries auto-generadas.
   @Index()
-  @Column({ type: 'uuid' })
+  @Column({ name: 'tenant_id', type: 'uuid' })
   tenantId!: string;
 
   /** "ORD-0001" — único por tenant (composite index) */
+  // @Index usa nombres de PROPIEDAD. TypeORM los traduce al nombre real
+  // de la columna (snake_case via @Column.name).
   @Index(['tenantId', 'code'], { unique: true })
-  @Column({ type: 'varchar', length: 20 })
+  @Column({ name: 'code', type: 'varchar', length: 20 })
   code!: string;
 
   @Index()
-  @Column({ type: 'uuid' })
+  @Column({ name: 'customer_id', type: 'uuid' })
   customerId!: string;
 
-  @Column({ type: 'varchar', length: 120 })
+  @Column({ name: 'customer_name', type: 'varchar', length: 120 })
   customerName!: string;
 
   @Index()
   @Column({
+    name: 'status',
     type: 'enum',
     enum: ['received', 'in_process', 'ready', 'delivered', 'cancelled'],
     default: 'received',
   })
   status!: 'received' | 'in_process' | 'ready' | 'delivered' | 'cancelled';
 
-  @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })
+  @Column({ name: 'total', type: 'numeric', precision: 12, scale: 2, default: 0 })
   total!: string;
 
-  @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })
+  @Column({ name: 'paid', type: 'numeric', precision: 12, scale: 2, default: 0 })
   paid!: string;
 
-  @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })
+  @Column({ name: 'balance', type: 'numeric', precision: 12, scale: 2, default: 0 })
   balance!: string;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ name: 'estimated_delivery_at', type: 'timestamptz', nullable: true })
   estimatedDeliveryAt?: Date;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ name: 'delivered_at', type: 'timestamptz', nullable: true })
   deliveredAt?: Date;
 
-  @Column({ type: 'varchar', length: 500, nullable: true })
+  @Column({ name: 'notes', type: 'varchar', length: 500, nullable: true })
   notes?: string;
 
   @OneToMany(() => OrderItemOrmEntity, (i) => i.order, {
@@ -61,9 +67,9 @@ export class OrderOrmEntity {
   })
   items!: OrderItemOrmEntity[];
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
 }

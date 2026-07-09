@@ -5,6 +5,7 @@ import {
   Button,
   Input,
   Label,
+  Spinner,
 } from '@lavanderpro/ui';
 import {
   OnboardingNegocioInputSchema,
@@ -70,7 +71,7 @@ export function OnboardingContent() {
   if (!hydrated || !tenant) {
     return (
       <main className="min-h-screen bg-canvas flex items-center justify-center">
-        <span className="inline-block h-8 w-8 border-2 border-muted/30 border-t-accent rounded-full animate-spin" />
+        <Spinner size="xl" />
       </main>
     );
   }
@@ -501,7 +502,7 @@ function StepActions({
       <Button type="submit" size="md" disabled={submitting}>
         {submitting ? (
           <>
-            <span className="inline-block h-3.5 w-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+            <Spinner size="sm" tone="inverse" />
             Guardando…
           </>
         ) : (

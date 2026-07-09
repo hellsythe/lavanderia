@@ -1,10 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
-import type { SyncChange, SyncOperation, SyncPullResponse } from '@lavanderpro/shared-types';
+import { MoreThan, Repository } from 'typeorm';
+import type {
+  ServiceCategory,
+  SyncChange,
+  SyncOperation,
+  SyncPullResponse,
+} from '@lavanderpro/shared-types';
 import { OrderOrmEntity } from '../orders/infrastructure/order.orm-entity';
 import { OrderItemOrmEntity } from '../orders/infrastructure/order-item.orm-entity';
 import { UserOrmEntity } from '../auth/infrastructure/user.orm-entity';
+import { ServiceCategoryOrmEntity } from '../services/infrastructure/entities/service-category.orm-entity';
 import { Order } from '../orders/domain/order.entity';
 
 /**
@@ -12,6 +18,8 @@ import { Order } from '../orders/domain/order.entity';
  *
  * GET /api/sync/changes?since=... → lista de cambios del tenant
  * POST /api/sync/batch → aplica operaciones del cliente (con LWW)
+ *
+ * Soporta: orders, service_categories.
  */
 @Injectable()
 export class SyncService {
@@ -24,28 +32,53 @@ export class SyncService {
     private readonly orderItemRepo: Repository<OrderItemOrmEntity>,
     @InjectRepository(UserOrmEntity)
     private readonly userRepo: Repository<UserOrmEntity>,
+    @InjectRepository(ServiceCategoryOrmEntity)
+    private readonly categoryRepo: Repository<ServiceCategoryOrmEntity>,
   ) {}
 
   /**
    * Devuelve todos los cambios del tenant con `updatedAt > since`.
-   * Por ahora solo orders; customers/services se agregarán cuando existan.
+   * Incluye orders + service_categories.
    */
   async getChanges(tenantId: string, since: number): Promise<SyncPullResponse> {
-    const orders = await this.orderRepo.find({
-      where: { tenantId, updatedAt: since > 0 ? require('typeorm').MoreThan(new Date(since)) : undefined },
-      relations: { items: true },
-      order: { updatedAt: 'ASC' },
-      take: 500, // limit por request
-    });
+    const sinceDate = since > 0 ? new Date(since) : undefined;
 
-    const changes: SyncChange[] = orders.map((o) => ({
-      entity: 'order' as const,
-      entityId: o.id,
-      op: 'update' as const,
-      payload: this.orderToDomain(o),
-      updatedAt: o.updatedAt.getTime(),
-      tombstone: false,
-    }));
+    const [orders, categories] = await Promise.all([
+      this.orderRepo.find({
+        where: sinceDate
+          ? { tenantId, updatedAt: MoreThan(sinceDate) }
+          : { tenantId },
+        relations: { items: true },
+        order: { updatedAt: 'ASC' },
+        take: 500,
+      }),
+      this.categoryRepo.find({
+        where: sinceDate
+          ? { tenantId, updatedAt: MoreThan(sinceDate) }
+          : { tenantId },
+        order: { updatedAt: 'ASC' },
+        take: 500,
+      }),
+    ]);
+
+    const changes: SyncChange[] = [
+      ...orders.map((o) => ({
+        entity: 'order' as const,
+        entityId: o.id,
+        op: 'update' as const,
+        payload: this.orderToDomain(o),
+        updatedAt: o.updatedAt.getTime(),
+        tombstone: false,
+      })),
+      ...categories.map((c) => ({
+        entity: 'service_category' as const,
+        entityId: c.id,
+        op: (c.deletedAt ? 'delete' : 'update') as 'delete' | 'update',
+        payload: this.categoryToDomain(c),
+        updatedAt: c.updatedAt.getTime(),
+        tombstone: !!c.deletedAt,
+      })),
+    ];
 
     return {
       changes,
@@ -55,8 +88,7 @@ export class SyncService {
 
   /**
    * Aplica un batch de operaciones con LWW.
-   * Para MVP, soportamos solo entity='order' op='update' (change status).
-   * 'create' y 'delete' se agregarán cuando Customers exista.
+   * Soporta: orders (update), service_categories (create/update/delete).
    */
   async pushBatch(
     tenantId: string,
@@ -70,8 +102,10 @@ export class SyncService {
         if (op.entity === 'order' && op.op === 'update') {
           await this.applyOrderUpdate(tenantId, op);
           accepted++;
+        } else if (op.entity === 'service_category') {
+          await this.applyCategoryOp(tenantId, op);
+          accepted++;
         } else {
-          // Entity o operación no soportada aún
           this.logger.warn(`Sync op not supported: ${op.entity}/${op.op}`);
           rejected++;
         }
@@ -82,6 +116,64 @@ export class SyncService {
     }
 
     return { accepted, rejected };
+  }
+
+  /**
+   * Aplica una op de service_category (create/update/delete).
+   * LWW: gana el que tenga updatedAt más reciente (con tie-break al server).
+   */
+  private async applyCategoryOp(tenantId: string, op: SyncOperation): Promise<void> {
+    const payload = op.payload as Partial<ServiceCategory>;
+    const existing = await this.categoryRepo.findOne({
+      where: { id: op.entityId, tenantId },
+    });
+
+    if (op.op === 'delete') {
+      if (!existing) return; // ya borrado, idempotente
+      // LWW: solo borramos si el local del cliente es más nuevo
+      if (payload.updatedAt && existing.updatedAt.getTime() > payload.updatedAt) return;
+      await this.categoryRepo.update(
+        { id: op.entityId, tenantId },
+        { deletedAt: new Date() },
+      );
+      return;
+    }
+
+    // create / update
+    const incomingName = payload.name;
+    if (!incomingName || typeof incomingName !== 'string') {
+      throw new Error(`Category ${op.entityId} sin name`);
+    }
+
+    if (!existing) {
+      // Crear — verifico unique (name, tenant) activo
+      const conflict = await this.categoryRepo.findOne({
+        where: { tenantId, name: incomingName },
+      });
+      if (conflict && !conflict.deletedAt && conflict.id !== op.entityId) {
+        // Otro cliente ya creó la misma. Mantengo el existente (server wins on conflict).
+        this.logger.warn(
+          `Category conflict on create: ${incomingName} ya existe (${conflict.id}). Skip.`,
+        );
+        return;
+      }
+      const cat = this.categoryRepo.create({
+        id: op.entityId,
+        tenantId,
+        name: incomingName,
+      });
+      await this.categoryRepo.save(cat);
+      return;
+    }
+
+    // Update — LWW
+    if (payload.updatedAt && existing.updatedAt.getTime() > payload.updatedAt) {
+      // Server tiene versión más nueva. Skip.
+      return;
+    }
+    existing.name = incomingName;
+    existing.deletedAt = null;
+    await this.categoryRepo.save(existing);
   }
 
   private async applyOrderUpdate(tenantId: string, op: SyncOperation): Promise<void> {
@@ -158,6 +250,17 @@ export class SyncService {
       deliveredAt: o.deliveredAt?.getTime(),
       createdAt: o.createdAt.getTime(),
       updatedAt: o.updatedAt.getTime(),
+    };
+  }
+
+  private categoryToDomain(c: ServiceCategoryOrmEntity): ServiceCategory {
+    return {
+      id: c.id,
+      tenantId: c.tenantId,
+      name: c.name,
+      deletedAt: c.deletedAt ? c.deletedAt.getTime() : null,
+      createdAt: c.createdAt.getTime(),
+      updatedAt: c.updatedAt.getTime(),
     };
   }
 }

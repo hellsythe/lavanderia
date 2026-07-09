@@ -1,0 +1,173 @@
+'use client';
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { categoryRepo, type CategorySnapshot } from '@lavanderpro/db-client';
+import {
+  enqueueSync,
+  useNetworkStore,
+} from '@lavanderpro/sync-engine';
+import type {
+  CreateServiceCategoryInput,
+  ServiceCategory,
+  UpdateServiceCategoryInput,
+} from '@lavanderpro/shared-types';
+import { categoriesApi } from '~/lib/api-client';
+
+/**
+ * Hooks de ServiceCategory con offline-first semantics.
+ *
+ * Reads:
+ *   1. Si online → fetch del API + bulkPut en cache local
+ *   2. Si offline o falla → devuelve cache local (filtrado por tenantId)
+ *
+ * Writes:
+ *   1. Apply local optimista (UI actualiza inmediato)
+ *   2. Enqueue a sync_queue
+ *   3. Si online, intentar API directo también (best-effort)
+ *
+ * `tenantId` se pasa al hook para filtrar el cache local.
+ */
+
+export const categoryKeys = {
+  all: ['categories'] as const,
+  list: (tenantId?: string) => [...categoryKeys.all, 'list', tenantId ?? ''] as const,
+};
+
+interface UseCategoriesParams {
+  tenantId?: string;
+}
+
+export function useCategories(params: UseCategoriesParams = {}) {
+  const { tenantId } = params;
+  return useQuery<CategorySnapshot[]>({
+    queryKey: categoryKeys.list(tenantId),
+    queryFn: async (): Promise<CategorySnapshot[]> => {
+      if (useNetworkStore.getState().state !== 'offline') {
+        try {
+          const response = await categoriesApi.list();
+          await categoryRepo.bulkPut(response.items);
+          return response.items;
+        } catch (e) {
+          console.warn('[useCategories] fetch failed, using cache:', e);
+          if (!tenantId) return [];
+          return categoryRepo.list(tenantId);
+        }
+      }
+      // Offline: leer cache
+      if (!tenantId) return [];
+      return categoryRepo.list(tenantId);
+    },
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateCategory(tenantId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreateServiceCategoryInput): Promise<CategorySnapshot> => {
+      // 1. Crear local
+      const local = await categoryRepo.createLocal({ tenantId, name: input.name });
+
+      // 2. Enqueue sync
+      await enqueueSync({
+        entity: 'service_category',
+        entityId: local.id,
+        op: 'create',
+        payload: local,
+        timestamp: Date.now(),
+      });
+
+      // 3. Best-effort: intentar API directo si online
+      if (useNetworkStore.getState().state !== 'offline') {
+        try {
+          // El server genera el ID; pero como ya tenemos local con UUID v7,
+          // enviamos el nombre y dejamos que el server cree uno nuevo.
+          // Si el server retorna un ID distinto, el sync pull lo traerá y
+          // unificaremos por nombre. Para MVP, aceptamos la creación local.
+          await categoriesApi.create({ name: input.name });
+        } catch (e) {
+          console.warn('[useCreateCategory] api call failed, will sync later:', e);
+        }
+      }
+
+      return local;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: categoryKeys.all });
+    },
+  });
+}
+
+export function useUpdateCategory(tenantId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: UpdateServiceCategoryInput;
+    }): Promise<CategorySnapshot> => {
+      // 1. Update local
+      const updated = await categoryRepo.updateLocal(id, { name: input.name });
+
+      // 2. Enqueue sync
+      await enqueueSync({
+        entity: 'service_category',
+        entityId: id,
+        op: 'update',
+        payload: updated,
+        timestamp: Date.now(),
+      });
+
+      // 3. Best-effort API
+      if (useNetworkStore.getState().state !== 'offline') {
+        try {
+          await categoriesApi.update(id, input);
+        } catch (e) {
+          console.warn('[useUpdateCategory] api call failed, will sync later:', e);
+        }
+      }
+
+      void tenantId;
+      return updated;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: categoryKeys.all });
+    },
+  });
+}
+
+export function useDeleteCategory(tenantId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string): Promise<CategorySnapshot> => {
+      // 1. Soft delete local (preserva tombstone)
+      const deleted = await categoryRepo.softDeleteLocal(id);
+
+      // 2. Enqueue sync
+      await enqueueSync({
+        entity: 'service_category',
+        entityId: id,
+        op: 'delete',
+        payload: deleted,
+        timestamp: Date.now(),
+      });
+
+      // 3. Best-effort API
+      if (useNetworkStore.getState().state !== 'offline') {
+        try {
+          await categoriesApi.remove(id);
+        } catch (e) {
+          console.warn('[useDeleteCategory] api call failed, will sync later:', e);
+        }
+      }
+
+      void tenantId;
+      return deleted;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: categoryKeys.all });
+    },
+  });
+}
