@@ -12,8 +12,6 @@ import {
   UpdateServiceInputSchema,
   type CreateServiceCategoryInput,
   type CreateServiceInput,
-  type Service,
-  type ServiceCategory,
   type UpdateServiceCategoryInput,
   type UpdateServiceInput,
 } from '@lavanderpro/shared-types';
@@ -23,6 +21,7 @@ import {
   type ServiceCategoryRepositoryPort,
   type ServiceRepositoryPort,
 } from './ports/service-repository.port';
+import type { Service, ServiceCategory } from './domain/service.entity';
 
 /**
  * Normaliza un campo opcional nullable de un UpdateInput.
@@ -104,27 +103,17 @@ export class ServicesService {
     }
 
     return this.services.update({
-      ...existing,
-      name: data.name ?? existing.name,
+      id: existing.id,
+      tenantId: existing.tenantId,
       categoryId: normalizeField(data.categoryId, existing.categoryId),
       description: normalizeField(data.description, existing.description),
+      name: data.name ?? existing.name,
       unit: data.unit ?? existing.unit,
       unitPrice: data.unitPrice ?? existing.unitPrice,
       active: data.active ?? existing.active,
-    });
-  }
-        throw new ConflictException(`Ya existe un servicio activo con el nombre "${data.name}"`);
-      }
-    }
-
-    return this.services.update({
-      ...existing,
-      name: data.name ?? existing.name,
-      categoryId: normalizeField(data.categoryId, existing.categoryId),
-      description: normalizeField(data.description, existing.description),
-      unit: data.unit ?? existing.unit,
-      unitPrice: data.unitPrice ?? existing.unitPrice,
-      active: data.active ?? existing.active,
+      deletedAt: existing.deletedAt,
+      createdAt: existing.createdAt,
+      updatedAt: existing.updatedAt,
     });
   }
 
