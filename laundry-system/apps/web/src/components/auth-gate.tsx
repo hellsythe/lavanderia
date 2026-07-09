@@ -4,8 +4,6 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '~/stores/auth-store';
 
-const PUBLIC_ROUTES = new Set(['/login', '/registro']);
-
 /**
  * AuthGate — protege las rutas del lado del cliente.
  *
@@ -20,8 +18,13 @@ const PUBLIC_ROUTES = new Set(['/login', '/registro']);
  *   2. Una vez hidratado, si la ruta no es pública y no hay user → /login.
  *   3. Si requiere reauth online y no estamos ya en /login → /login.
  *
+ * El gating de onboarding (modal "completá tu configuración") se hace
+ * en `OnboardingGate`, montado en layout.tsx. Acá solo se maneja auth.
+ *
  * Rutas públicas: /login y /registro. Todo lo demás requiere sesión.
  */
+const PUBLIC_ROUTES = new Set(['/login', '/registro']);
+
 export function AuthGate({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
