@@ -6,9 +6,11 @@ import {
 } from './ports/tenant-repository.port';
 import { TypeormTenantRepository } from './infrastructure/typeorm-tenant.repository';
 import { TenantsService } from './tenants.service';
+import { TenantsController } from './tenants.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([TenantOrmEntity])],
+  controllers: [TenantsController],
   providers: [
     TenantsService,
     {

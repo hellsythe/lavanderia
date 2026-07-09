@@ -63,73 +63,73 @@ services:
   # ────────────────────────────────────────────────────────
   # API (NestJS con hot-reload)
   # ────────────────────────────────────────────────────────
-  api:
-    build:
-      context: .
-      dockerfile: ./apps/api/Dockerfile
-      target: deps   # ← stage con TODAS las deps (incluye devDependencies)
-    container_name: lavanderpro-api
-    restart: unless-stopped
-    command: sh -c "cd apps/api && pnpm dev"
-    environment:
-      NODE_ENV: development
-      PORT: 4000
-      HOST: 0.0.0.0
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: ${POSTGRES_USER:-lavanderpro}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lavanderpro}
-      POSTGRES_DB: ${POSTGRES_DB:-lavanderpro}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      JWT_SECRET: ${JWT_SECRET:-local-dev-secret-not-secure}
-      JWT_ACCESS_EXPIRES_IN: 15m
-      JWT_REFRESH_EXPIRES_IN: 60d
-      CORS_ORIGINS: http://localhost:3000,http://localhost:4000
-    ports:
-      - "${API_PORT:-4000}:4000"
-    volumes:
-      # Hot-reload: el código fuente vive en el host, el container solo corre node
-      - ./apps/api/src:/repo/apps/api/src:ro
-      - ./packages/shared-types/src:/repo/packages/shared-types/src:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ['CMD', 'curl', '-fsS', 'http://localhost:4000/api/health']
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: ./apps/api/Dockerfile
+  #     target: deps   # ← stage con TODAS las deps (incluye devDependencies)
+  #   container_name: lavanderpro-api
+  #   restart: unless-stopped
+  #   command: sh -c "cd apps/api && pnpm dev"
+  #   environment:
+  #     NODE_ENV: development
+  #     PORT: 4000
+  #     HOST: 0.0.0.0
+  #     POSTGRES_HOST: postgres
+  #     POSTGRES_PORT: 5432
+  #     POSTGRES_USER: ${POSTGRES_USER:-lavanderpro}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lavanderpro}
+  #     POSTGRES_DB: ${POSTGRES_DB:-lavanderpro}
+  #     REDIS_HOST: redis
+  #     REDIS_PORT: 6379
+  #     JWT_SECRET: ${JWT_SECRET:-local-dev-secret-not-secure}
+  #     JWT_ACCESS_EXPIRES_IN: 15m
+  #     JWT_REFRESH_EXPIRES_IN: 60d
+  #     CORS_ORIGINS: http://localhost:3000,http://localhost:4000
+  #   ports:
+  #     - "${API_PORT:-4000}:4000"
+  #   volumes:
+  #     # Hot-reload: el código fuente vive en el host, el container solo corre node
+  #     - ./apps/api/src:/repo/apps/api/src:ro
+  #     - ./packages/shared-types/src:/repo/packages/shared-types/src:ro
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ['CMD', 'curl', '-fsS', 'http://localhost:4000/api/health']
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 30s
 
-  # ────────────────────────────────────────────────────────
-  # Web (Next.js dev server con HMR)
-  # ────────────────────────────────────────────────────────
-  web:
-    build:
-      context: .
-      dockerfile: ./apps/web/Dockerfile
-      target: deps   # stage con devDependencies
-    container_name: lavanderpro-web
-    restart: unless-stopped
-    command: sh -c "cd apps/web && pnpm dev"
-    environment:
-      NODE_ENV: development
-      NEXT_PUBLIC_API_URL: http://localhost:4000/api
-      # Next.js dev server en 0.0.0.0 para ser accesible desde fuera del container
-      HOSTNAME: 0.0.0.0
-      PORT: 3000
-    ports:
-      - "${WEB_PORT:-3000}:3000"
-    volumes:
-      # Hot-reload: source desde el host
-      - ./apps/web/src:/repo/apps/web/src:ro
-      - ./apps/web/public:/repo/apps/web/public:ro
-      - ./apps/web/next.config.mjs:/repo/apps/web/next.config.mjs:ro
-    depends_on:
-      - api
+  # # ────────────────────────────────────────────────────────
+  # # Web (Next.js dev server con HMR)
+  # # ────────────────────────────────────────────────────────
+  # web:
+  #   build:
+  #     context: .
+  #     dockerfile: ./apps/web/Dockerfile
+  #     target: deps   # stage con devDependencies
+  #   container_name: lavanderpro-web
+  #   restart: unless-stopped
+  #   command: sh -c "cd apps/web && pnpm dev"
+  #   environment:
+  #     NODE_ENV: development
+  #     NEXT_PUBLIC_API_URL: http://localhost:4000/api
+  #     # Next.js dev server en 0.0.0.0 para ser accesible desde fuera del container
+  #     HOSTNAME: 0.0.0.0
+  #     PORT: 3000
+  #   ports:
+  #     - "${WEB_PORT:-3000}:3000"
+  #   volumes:
+  #     # Hot-reload: source desde el host
+  #     - ./apps/web/src:/repo/apps/web/src:ro
+  #     - ./apps/web/public:/repo/apps/web/public:ro
+  #     - ./apps/web/next.config.mjs:/repo/apps/web/next.config.mjs:ro
+  #   depends_on:
+  #     - api
 
 volumes:
   lavanderpro_pgdata:

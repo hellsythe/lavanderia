@@ -1,7 +1,12 @@
 'use client';
 
 import { create } from 'zustand';
-import type { LoginInput, RegisterInput } from '@lavanderpro/shared-types';
+import type {
+  LoginInput,
+  OnboardingStepInput,
+  RegisterInput,
+  Tenant,
+} from '@lavanderpro/shared-types';
 import {
   authApi,
   clearCachedTokens,
@@ -10,6 +15,7 @@ import {
   getRefreshToken,
   persistSession,
   setCachedTokens,
+  tenantsApi,
 } from '~/lib/api-client';
 import { authGate } from '~/lib/auth-gate';
 
@@ -25,6 +31,17 @@ type AuthTenant = {
   name: string;
   slug: string;
   plan: string;
+  // Campos del onboarding — se rellenan tras completar cada paso.
+  // `null` cuando aún no se completó ese paso.
+  fiscalName?: string | null;
+  fiscalAddress?: string | null;
+  branchName?: string | null;
+  branchAddress?: string | null;
+  branchPhone?: string | null;
+  whatsappPhone?: string | null;
+  whatsappVerifiedAt?: number | null;
+  onboardingStep?: number;
+  onboardingCompletedAt?: number;
 };
 
 interface AuthState {
@@ -46,6 +63,12 @@ interface AuthState {
   setupPin: (pin: string) => Promise<void>;
   unlockWithPin: (pin: string) => Promise<{ ok: boolean }>;
   unlockWithBiometric: () => Promise<{ ok: boolean }>;
+  /**
+   * Aplica un paso del onboarding al tenant actual.
+   * Actualiza el `tenant` en el store con la respuesta del server.
+   * El caller debe haber validado con Zod antes (usamos zodResolver en el form).
+   */
+  updateTenantOnboarding: (input: OnboardingStepInput) => Promise<Tenant>;
 }
 
 export const useAuth = create<AuthState>((set, get) => ({
@@ -66,7 +89,20 @@ export const useAuth = create<AuthState>((set, get) => ({
       const { userRepo } = await import('@lavanderpro/db-client');
       const snap = await authSessionRepo.get();
       const userSnap = await userRepo.getCurrent();
+
+      // Helper para reconstruir el `tenant` desde userRepo cuando no hay
+      // sesión encriptada (caso típico: register fresh, antes de setupPin).
+      const tenantFromUser = userSnap
+        ? {
+            id: userSnap.tenantId,
+            name: userSnap.tenantName,
+            slug: userSnap.tenantSlug ?? '',
+            plan: userSnap.tenantPlan,
+          }
+        : null;
+
       if (snap && userSnap) {
+        // Sesión encriptada con PIN — requiere unlock
         set({
           user: {
             id: userSnap.id,
@@ -86,8 +122,10 @@ export const useAuth = create<AuthState>((set, get) => ({
           status: 'idle',
           requiresOnlineReauth: await authGate.needsOnlineReauth(),
         });
-      } else if (userSnap) {
-        // Sesión online sin PIN — usar directamente
+      } else if (userSnap && tenantFromUser) {
+        // Sesión online sin PIN — usar directamente, reconstruir tenant
+        // desde userRepo. NO nullear tenant: rompe el flujo de onboarding
+        // si acaba de registrarse y refresca la página.
         set({
           user: {
             id: userSnap.id,
@@ -96,7 +134,7 @@ export const useAuth = create<AuthState>((set, get) => ({
             role: userSnap.role,
             tenantId: userSnap.tenantId,
           },
-          tenant: null,
+          tenant: tenantFromUser,
           pinSetup: false,
           pinUnlocked: true, // sin PIN, sesión "always unlocked"
           status: 'authenticated',
@@ -128,6 +166,7 @@ export const useAuth = create<AuthState>((set, get) => ({
         tenantId: data.user.tenantId,
         tenantName: data.tenant.name,
         tenantPlan: data.tenant.plan,
+        tenantSlug: data.tenant.slug,
       });
     } catch (err) {
       set({
@@ -157,6 +196,7 @@ export const useAuth = create<AuthState>((set, get) => ({
         tenantId: data.user.tenantId,
         tenantName: data.tenant.name,
         tenantPlan: data.tenant.plan,
+        tenantSlug: data.tenant.slug,
       });
     } catch (err) {
       set({
@@ -231,6 +271,32 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  updateTenantOnboarding: async (input) => {
+    const { tenant } = get();
+    if (!tenant) {
+      throw new Error('No hay tenant activo');
+    }
+    const updated = await tenantsApi.updateOnboarding(tenant.id, input);
+    set({
+      tenant: {
+        id: updated.id,
+        name: updated.name,
+        slug: updated.slug,
+        plan: updated.plan,
+        fiscalName: updated.fiscalName ?? null,
+        fiscalAddress: updated.fiscalAddress ?? null,
+        branchName: updated.branchName ?? null,
+        branchAddress: updated.branchAddress ?? null,
+        branchPhone: updated.branchPhone ?? null,
+        whatsappPhone: updated.whatsappPhone ?? null,
+        whatsappVerifiedAt: updated.whatsappVerifiedAt ?? null,
+        onboardingStep: updated.onboardingStep,
+        onboardingCompletedAt: updated.onboardingCompletedAt,
+      },
+    });
+    return updated;
+  },
 }));
 
 function pinErrorMessage(reason: string | undefined): string {

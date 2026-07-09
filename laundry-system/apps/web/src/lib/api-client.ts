@@ -10,12 +10,15 @@
  */
 
 import { authSessionRepo, failedAttemptsRepo, userRepo } from '@lavanderpro/db-client';
+import { setAccessToken as setSyncEngineToken } from '@lavanderpro/sync-engine';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
 /**
  * Shape de la respuesta del backend.
- * La API anida los tokens en `tokens` (ver AuthResult en apps/api).
+ * La API anida los tokens en `tokens` para /auth/login y /auth/register.
+ * /auth/refresh responde SIN anidar (ver auth.service.ts:refresh que
+ * retorna `this.generateTokens(...)` directo).
  */
 export interface AuthResponse {
   tokens: {
@@ -38,32 +41,97 @@ export interface AuthResponse {
   };
 }
 
-// Cache en memoria para evitar queries async en cada request.
-let _cachedSession: { access: string; refresh: string } | null = null;
+/** Shape de /auth/refresh: tokens NO anidados. */
+interface RefreshResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
+// Cache en sessionStorage para sobrevivir:
+//  - HMR / Fast Refresh en dev (re-evalúa módulos → reset de vars top-level)
+//  - Navegación entre rutas (Next.js App Router)
+//  - Page reload dentro de la misma pestaña
+//
+// NO usamos localStorage (mayor superficie XSS) ni cookies (incompatibles
+// con Capacitor WebView + mobile). sessionStorage se limpia al cerrar la
+// pestaña, que es lo que queremos para una sesión "viva".
+const STORAGE_KEY = 'lp.session';
+
+interface StoredSession {
+  access: string;
+  refresh: string;
+}
+
+function readSession(): StoredSession | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredSession;
+    if (typeof parsed.access !== 'string' || typeof parsed.refresh !== 'string') {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeSession(session: StoredSession | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (session) {
+      window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    } else {
+      window.sessionStorage.removeItem(STORAGE_KEY);
+    }
+  } catch {
+    // sessionStorage puede tirar en modo privado / Safari ITP — ignorar.
+  }
+}
+
+// Cache en memoria — espeja sessionStorage para no leer storage en cada request.
+let _cachedSession: StoredSession | null = readSession();
 
 /**
  * Devuelve el access token actualmente válido. El access token se desbloquea
- * vía unlockWithPin (auth-gate) o fresh login y se cachea en memoria.
+ * vía unlockWithPin (auth-gate) o fresh login y se cachea en memoria +
+ * sessionStorage.
  * Devuelve null si no hay sesión desbloqueada.
  */
 export function getAccessToken(): string | null {
+  // Si el módulo fue re-evaluado (HMR), re-leer de sessionStorage.
+  if (!_cachedSession) {
+    _cachedSession = readSession();
+  }
   return _cachedSession?.access ?? null;
 }
 
 export function getRefreshToken(): string | null {
+  if (!_cachedSession) {
+    _cachedSession = readSession();
+  }
   return _cachedSession?.refresh ?? null;
 }
 
 /**
- * Guarda los tokens en cache de memoria. Llamar después de fresh login
- * o después de unlockWithPin exitoso.
+ * Guarda los tokens en sessionStorage + cache de memoria.
+ * Llamar después de fresh login o después de unlockWithPin exitoso.
+ *
+ * Sincroniza con el cache interno de @lavanderpro/sync-engine para que
+ * el sync-engine pueda mandar el JWT en sus requests sin duplicar estado.
  */
 export function setCachedTokens(access: string, refresh: string): void {
   _cachedSession = { access, refresh };
+  writeSession(_cachedSession);
+  setSyncEngineToken(access);
 }
 
 export function clearCachedTokens(): void {
   _cachedSession = null;
+  writeSession(null);
+  setSyncEngineToken(null);
 }
 
 /**
@@ -151,9 +219,11 @@ async function refreshAccessToken(): Promise<string | null> {
       body: JSON.stringify({ refreshToken: refresh }),
     });
     if (!res.ok) return null;
-    const data = (await res.json()) as AuthResponse;
-    setCachedTokens(data.tokens.accessToken, data.tokens.refreshToken);
-    return data.tokens.accessToken;
+    // /auth/refresh responde SIN anidar tokens (ver auth.service.ts:refresh).
+    const data = (await res.json()) as RefreshResponse;
+    if (!data.accessToken || !data.refreshToken) return null;
+    setCachedTokens(data.accessToken, data.refreshToken);
+    return data.accessToken;
   } catch {
     return null;
   }
@@ -177,6 +247,10 @@ export async function apiRequest<T>(
 
   // Primer intento
   const token = getAccessToken();
+  if (!skipAuth && !token) {
+    // eslint-disable-next-line no-console
+    console.warn(`[api] ${path} sin access token en cache`);
+  }
   let res = await fetch(`${API_BASE}${path}`, {
     ...rest,
     headers: buildHeaders(token),
@@ -263,8 +337,23 @@ export const ordersApi = {
 // Necesitamos los types aquí también
 import type {
   CreateOrderInput,
+  OnboardingStepInput,
   Order,
   OrderStatus,
   LoginInput,
   RegisterInput,
+  Tenant,
 } from '@lavanderpro/shared-types';
+
+// Tenants-specific helpers
+export const tenantsApi = {
+  /**
+   * PATCH /tenants/:id/onboarding — aplica un paso del onboarding.
+   * Server-side validation con Zod; devuelve el tenant actualizado.
+   */
+  updateOnboarding: (id: string, input: OnboardingStepInput) =>
+    apiRequest<Tenant>(`/tenants/${id}/onboarding`, {
+      method: 'PATCH',
+      json: input,
+    }),
+};

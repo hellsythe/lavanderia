@@ -29,6 +29,8 @@ export interface UserSnapshot {
   tenantId: string;
   tenantName: string;
   tenantPlan: string;
+  /** Slug del tenant — agregado para que hydrate pueda reconstruir el `tenant` completo. */
+  tenantSlug?: string;
 }
 
 /**

@@ -1,5 +1,11 @@
 import type { Tenant } from '../domain/tenant.entity';
 
+/** Campos que el caller provee al crear un tenant. */
+export type CreateTenantInput = Omit<
+  Tenant,
+  'id' | 'createdAt' | 'updatedAt' | 'onboardingStep'
+>;
+
 /**
  * Output port — contrato de persistencia de tenants.
  *
@@ -9,7 +15,8 @@ import type { Tenant } from '../domain/tenant.entity';
 export interface TenantRepositoryPort {
   findById(id: string): Promise<Tenant | null>;
   findBySlug(slug: string): Promise<Tenant | null>;
-  create(tenant: Omit<Tenant, 'id' | 'createdAt' | 'updatedAt'>): Promise<Tenant>;
+  create(tenant: CreateTenantInput): Promise<Tenant>;
+  update(id: string, patch: Partial<Tenant>): Promise<Tenant>;
 }
 
 export const TENANT_REPOSITORY = Symbol('TENANT_REPOSITORY');

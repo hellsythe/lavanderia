@@ -26,6 +26,20 @@ export const TenantSchema = z.object({
     .max(40)
     .regex(/^[a-z0-9-]+$/),
   plan: TenantPlanSchema,
+  // Datos fiscales — paso 1 del onboarding
+  fiscalName: z.string().min(2).max(120).optional(),
+  fiscalAddress: z.string().min(5).max(200).optional(),
+  fiscalTaxId: z.string().min(8).max(20).optional(),
+  // Datos de sucursal — paso 2 del onboarding
+  branchName: z.string().min(2).max(120).optional(),
+  branchAddress: z.string().min(5).max(200).optional(),
+  branchPhone: z.string().min(8).max(30).optional(),
+  // WhatsApp — paso 3 del onboarding
+  whatsappPhone: z.string().min(10).max(15).optional(),
+  whatsappVerifiedAt: TimestampSchema.optional(),
+  // Progreso del onboarding
+  onboardingStep: z.number().int().min(0).max(3).default(0),
+  onboardingCompletedAt: TimestampSchema.optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 });
@@ -220,6 +234,46 @@ export const PaymentSchema = z.object({
   updatedAt: TimestampSchema,
 });
 export type Payment = z.infer<typeof PaymentSchema>;
+
+/* =========================================================================
+ * Onboarding (Negocio / Sucursal / WhatsApp)
+ * ========================================================================= */
+
+/** Paso 1: datos fiscales del negocio. */
+export const OnboardingNegocioInputSchema = z.object({
+  fiscalName: z.string().min(2).max(120),
+  fiscalAddress: z.string().min(5).max(200),
+  fiscalTaxId: z.string().min(8).max(20).optional(),
+});
+export type OnboardingNegocioInput = z.infer<typeof OnboardingNegocioInputSchema>;
+
+/** Paso 2: primera sucursal física. */
+export const OnboardingSucursalInputSchema = z.object({
+  branchName: z.string().min(2).max(120),
+  branchAddress: z.string().min(5).max(200),
+  branchPhone: z.string().min(8).max(30),
+  /** Si true, el cliente copió address del paso 1 (no se persiste en el server). */
+  sameAsFiscal: z.boolean().optional(),
+});
+export type OnboardingSucursalInput = z.infer<typeof OnboardingSucursalInputSchema>;
+
+/** Paso 3: verificación de WhatsApp (demo). */
+export const OnboardingWhatsappInputSchema = z.object({
+  whatsappPhone: z.string().min(10).max(15),
+  whatsappCode: z.string().length(6),
+});
+export type OnboardingWhatsappInput = z.infer<typeof OnboardingWhatsappInputSchema>;
+
+/**
+ * Body del PATCH /api/tenants/:id durante onboarding.
+ * Discriminated union — el campo `step` (1|2|3) selecciona el schema.
+ */
+export const OnboardingStepInputSchema = z.discriminatedUnion('step', [
+  OnboardingNegocioInputSchema.extend({ step: z.literal(1) }),
+  OnboardingSucursalInputSchema.extend({ step: z.literal(2) }),
+  OnboardingWhatsappInputSchema.extend({ step: z.literal(3) }),
+]);
+export type OnboardingStepInput = z.infer<typeof OnboardingStepInputSchema>;
 
 /* =========================================================================
  * Auth
