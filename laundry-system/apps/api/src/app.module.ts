@@ -8,6 +8,7 @@ import { OrderOrmEntity } from './orders/infrastructure/order.orm-entity';
 import { OrderItemOrmEntity } from './orders/infrastructure/order-item.orm-entity';
 import { CustomerOrmEntity } from './database/entities/customer.orm-entity';
 import { ServiceOrmEntity } from './services/infrastructure/entities/service.orm-entity';
+import { ServiceCategoryOrmEntity } from './services/infrastructure/entities/service-category.orm-entity';
 import { AuthModule } from './auth/auth.module';
 import { CustomersModule } from './customers/customers.module';
 import { HealthModule } from './health/health.module';
@@ -39,6 +40,7 @@ import { SyncModule } from './sync/sync.module';
           OrderItemOrmEntity,
           CustomerOrmEntity,
           ServiceOrmEntity,
+          ServiceCategoryOrmEntity,
         ],
         migrations: ['dist/database/migrations/*.js'],
         migrationsRun: true,
