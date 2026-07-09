@@ -9,6 +9,9 @@ import { cn } from '../lib/cn';
  *
  * Card seleccionable con checkbox, info, precio unitario y stepper.
  * Estado activo: borde --accent + fondo --accent-soft.
+ *
+ * El checkbox toggle usa `minQuantity` como valor al activar (no 1) —
+ * así respeta la cantidad mínima del servicio.
  */
 export interface ServiceCardProps {
   id: string;
@@ -17,6 +20,8 @@ export interface ServiceCardProps {
   unit: 'kg' | 'piece';
   unitPrice: number;
   quantity: number;
+  /** Cantidad mínima al activar el card. Default 1. */
+  minQuantity?: number;
   icon?: ReactNode;
   onQuantityChange: (qty: number) => void;
 }
@@ -28,6 +33,7 @@ export function ServiceCard({
   unit,
   unitPrice,
   quantity,
+  minQuantity = 1,
   icon,
   onQuantityChange,
 }: ServiceCardProps) {
@@ -50,7 +56,9 @@ export function ServiceCard({
         type="checkbox"
         id={`svc-${id}`}
         checked={selected}
-        onChange={(e) => onQuantityChange(e.target.checked ? 1 : 0)}
+        onChange={(e) =>
+          onQuantityChange(e.target.checked ? minQuantity : 0)
+        }
         className="mt-1 h-3.5 w-3.5 accent-[var(--accent)] cursor-pointer"
       />
 
@@ -81,6 +89,7 @@ export function ServiceCard({
           value={quantity}
           onChange={onQuantityChange}
           unit={unitLabel}
+          min={minQuantity}
         />
       )}
     </div>
@@ -91,7 +100,9 @@ interface StepperProps {
   value: number;
   onChange: (n: number) => void;
   unit: string;
+  /** Cantidad mínima (inclusive). Default 0. */
   min?: number;
+  /** Cantidad máxima (inclusive). Default 99. */
   max?: number;
 }
 
