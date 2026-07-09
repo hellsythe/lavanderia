@@ -19,7 +19,7 @@ export class TypeormCustomerRepository implements CustomerRepositoryPort {
 
   async findById(id: string, tenantId: string): Promise<Customer | null> {
     const result = await this.repo.manager.query(
-      `SELECT id, tenant_id, name, phone, email, address, notes, deleted_at, created_at, updated_at
+      `SELECT id, tenant_id, name, phone, email, address, notes, rfc, legal_name, deleted_at, created_at, updated_at
        FROM customers
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
       [id, tenantId],
@@ -31,7 +31,7 @@ export class TypeormCustomerRepository implements CustomerRepositoryPort {
 
   async findByName(name: string, tenantId: string): Promise<Customer | null> {
     const result = await this.repo.manager.query(
-      `SELECT id, tenant_id, name, phone, email, address, notes, deleted_at, created_at, updated_at
+      `SELECT id, tenant_id, name, phone, email, address, notes, rfc, legal_name, deleted_at, created_at, updated_at
        FROM customers
        WHERE name = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
       [name, tenantId],
@@ -52,13 +52,13 @@ export class TypeormCustomerRepository implements CustomerRepositoryPort {
 
     if (hasSearch) {
       const like = `%${filters.search!.toLowerCase()}%`;
-      whereClause += ` AND (LOWER(name) LIKE $2 OR LOWER(COALESCE(phone, '')) LIKE $2 OR LOWER(COALESCE(email, '')) LIKE $2)`;
+      whereClause += ` AND (LOWER(name) LIKE $2 OR LOWER(COALESCE(phone, '')) LIKE $2 OR LOWER(COALESCE(email, '')) LIKE $2 OR LOWER(COALESCE(rfc, '')) LIKE $2 OR LOWER(COALESCE(legal_name, '')) LIKE $2)`;
       itemsParams.push(like);
       countParams.push(like);
     }
 
     const itemsQuery = `
-      SELECT id, tenant_id, name, phone, email, address, notes, deleted_at, created_at, updated_at
+      SELECT id, tenant_id, name, phone, email, address, notes, rfc, legal_name, deleted_at, created_at, updated_at
       FROM customers
       ${whereClause}
       ORDER BY name ASC
@@ -89,9 +89,9 @@ export class TypeormCustomerRepository implements CustomerRepositoryPort {
     customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>,
   ): Promise<Customer> {
     const result = await this.repo.manager.query(
-      `INSERT INTO customers (tenant_id, name, phone, email, address, notes)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, tenant_id, name, phone, email, address, notes, deleted_at, created_at, updated_at`,
+      `INSERT INTO customers (tenant_id, name, phone, email, address, notes, rfc, legal_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, tenant_id, name, phone, email, address, notes, rfc, legal_name, deleted_at, created_at, updated_at`,
       [
         customer.tenantId,
         customer.name,
@@ -99,6 +99,8 @@ export class TypeormCustomerRepository implements CustomerRepositoryPort {
         customer.email ?? null,
         customer.address ?? null,
         customer.notes ?? null,
+        customer.rfc ?? null,
+        customer.legalName ?? null,
       ],
     );
     const rows = result as Record<string, unknown>[] | undefined;
@@ -113,9 +115,9 @@ export class TypeormCustomerRepository implements CustomerRepositoryPort {
   async update(customer: Customer): Promise<Customer> {
     const result = await this.repo.manager.query(
       `UPDATE customers
-       SET name = $3, phone = $4, email = $5, address = $6, notes = $7
+       SET name = $3, phone = $4, email = $5, address = $6, notes = $7, rfc = $8, legal_name = $9
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, name, phone, email, address, notes, deleted_at, created_at, updated_at`,
+       RETURNING id, tenant_id, name, phone, email, address, notes, rfc, legal_name, deleted_at, created_at, updated_at`,
       [
         customer.id,
         customer.tenantId,
@@ -124,6 +126,8 @@ export class TypeormCustomerRepository implements CustomerRepositoryPort {
         customer.email ?? null,
         customer.address ?? null,
         customer.notes ?? null,
+        customer.rfc ?? null,
+        customer.legalName ?? null,
       ],
     );
     const rows = result as Record<string, unknown>[] | undefined;
@@ -151,6 +155,8 @@ export class TypeormCustomerRepository implements CustomerRepositoryPort {
       email: (row.email as string) || undefined,
       address: (row.address as string) || undefined,
       notes: (row.notes as string) || undefined,
+      rfc: (row.rfc as string) || undefined,
+      legalName: (row.legal_name as string) || undefined,
       deletedAt: row.deleted_at ? new Date(row.deleted_at as string).getTime() : null,
       createdAt: new Date(row.created_at as string).getTime(),
       updatedAt: new Date(row.updated_at as string).getTime(),

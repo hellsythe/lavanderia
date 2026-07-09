@@ -82,6 +82,12 @@ export interface CustomerSnapshot {
   email?: string;
   address?: string;
   notes?: string;
+  /** RFC (Registro Federal de Contribuyentes, México). Opcional. */
+  rfc?: string;
+  /** Razón social — opcional, útil para facturación. */
+  legalName?: string;
+  deletedAt?: number | null;
+  createdAt: number;
   updatedAt: number;
 }
 

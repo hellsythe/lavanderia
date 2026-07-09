@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThan, Repository } from 'typeorm';
 import type {
@@ -11,6 +11,11 @@ import { OrderOrmEntity } from '../orders/infrastructure/order.orm-entity';
 import { OrderItemOrmEntity } from '../orders/infrastructure/order-item.orm-entity';
 import { UserOrmEntity } from '../auth/infrastructure/user.orm-entity';
 import { ServiceCategoryOrmEntity } from '../services/infrastructure/entities/service-category.orm-entity';
+import { CustomerOrmEntity } from '../database/entities/customer.orm-entity';
+import {
+  CUSTOMER_REPOSITORY,
+  type CustomerRepositoryPort,
+} from '../customers/ports/customer-repository.port';
 import { Order } from '../orders/domain/order.entity';
 
 /**
@@ -19,7 +24,7 @@ import { Order } from '../orders/domain/order.entity';
  * GET /api/sync/changes?since=... → lista de cambios del tenant
  * POST /api/sync/batch → aplica operaciones del cliente (con LWW)
  *
- * Soporta: orders, service_categories.
+ * Soporta: orders, service_categories, services, customers.
  */
 @Injectable()
 export class SyncService {
@@ -34,6 +39,10 @@ export class SyncService {
     private readonly userRepo: Repository<UserOrmEntity>,
     @InjectRepository(ServiceCategoryOrmEntity)
     private readonly categoryRepo: Repository<ServiceCategoryOrmEntity>,
+    @InjectRepository(CustomerOrmEntity)
+    private readonly customerEntityRepo: Repository<CustomerOrmEntity>,
+    @Inject(CUSTOMER_REPOSITORY)
+    private readonly customerRepo: CustomerRepositoryPort,
   ) {}
 
   /**
@@ -88,7 +97,8 @@ export class SyncService {
 
   /**
    * Aplica un batch de operaciones con LWW.
-   * Soporta: orders (update), service_categories (create/update/delete).
+   * Soporta: orders (update), customers (create/update/delete),
+   * service_categories (create/update/delete), services (create/update/delete).
    */
   async pushBatch(
     tenantId: string,
@@ -105,6 +115,9 @@ export class SyncService {
         } else if (op.entity === 'service_category') {
           await this.applyCategoryOp(tenantId, op);
           accepted++;
+        } else if (op.entity === 'customer') {
+          await this.applyCustomerOp(tenantId, op);
+          accepted++;
         } else {
           this.logger.warn(`Sync op not supported: ${op.entity}/${op.op}`);
           rejected++;
@@ -116,6 +129,81 @@ export class SyncService {
     }
 
     return { accepted, rejected };
+  }
+
+  /**
+   * Aplica una op de customer (create/update/delete). Mismo patrón que
+   * service_category: LWW con tie-break al server (no pisa si el local
+   * del cliente es más viejo).
+   */
+  private async applyCustomerOp(tenantId: string, op: SyncOperation): Promise<void> {
+    const payload = op.payload as Partial<{ name: string; updatedAt: number; [k: string]: unknown }>;
+
+    if (op.op === 'delete') {
+      const existing = await this.customerEntityRepo.findOne({
+        where: { id: op.entityId, tenantId },
+      });
+      if (!existing) return;
+      if (payload.updatedAt && existing.updatedAt.getTime() > payload.updatedAt) return;
+      await this.customerRepo.softDelete(op.entityId, tenantId);
+      return;
+    }
+
+    const incomingName = payload.name;
+    if (!incomingName || typeof incomingName !== 'string') {
+      throw new Error(`Customer ${op.entityId} sin name`);
+    }
+
+    const existing = await this.customerEntityRepo.findOne({
+      where: { id: op.entityId, tenantId },
+    });
+
+    if (!existing) {
+      // Crear — validamos unique (name, tenant) activo para evitar
+      // colisiones con clientes que ya existen en el server.
+      const conflict = await this.customerEntityRepo.findOne({
+        where: { tenantId, name: incomingName },
+      });
+      if (conflict && !conflict.deletedAt && conflict.id !== op.entityId) {
+        this.logger.warn(
+          `Customer conflict on create: ${incomingName} ya existe (${conflict.id}). Skip.`,
+        );
+        return;
+      }
+      // Crear con el id del cliente (offline-first). Usamos el
+      // customerEntityRepo directamente (no el port) porque necesitamos
+      // preservar el id que ya viene del cliente. El port.create()
+      // autogeneraría uno nuevo.
+      const newCustomer = this.customerEntityRepo.create({
+        id: op.entityId,
+        tenantId,
+        name: incomingName,
+        phone: (payload.phone as string | null) ?? null,
+        email: (payload.email as string | null) ?? null,
+        address: (payload.address as string | null) ?? null,
+        notes: (payload.notes as string | null) ?? null,
+        rfc: (payload.rfc as string | null) ?? null,
+        legalName: (payload.legalName as string | null) ?? null,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      await this.customerEntityRepo.save(newCustomer);
+      return;
+    }
+
+    // Update — LWW
+    if (payload.updatedAt && existing.updatedAt.getTime() > payload.updatedAt) {
+      return; // server más nuevo, skip
+    }
+    existing.name = incomingName;
+    if (payload.phone !== undefined) existing.phone = (payload.phone as string | null) ?? null;
+    if (payload.email !== undefined) existing.email = (payload.email as string | null) ?? null;
+    if (payload.address !== undefined) existing.address = (payload.address as string | null) ?? null;
+    if (payload.notes !== undefined) existing.notes = (payload.notes as string | null) ?? null;
+    if (payload.rfc !== undefined) existing.rfc = (payload.rfc as string | null) ?? null;
+    if (payload.legalName !== undefined) existing.legalName = (payload.legalName as string | null) ?? null;
+    await this.customerEntityRepo.save(existing);
   }
 
   /**

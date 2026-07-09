@@ -48,6 +48,14 @@ export class CustomerOrmEntity {
   @Column({ name: 'notes', type: 'varchar', length: 500, nullable: true })
   notes?: string | null;
 
+  // Datos fiscales opcionales (migration 1700000006000). Útiles para
+  // facturación — el cliente final puede o no tenerlos.
+  @Column({ name: 'rfc', type: 'varchar', length: 13, nullable: true })
+  rfc?: string | null;
+
+  @Column({ name: 'legal_name', type: 'varchar', length: 120, nullable: true })
+  legalName?: string | null;
+
   @Column({ name: 'deleted_at', type: 'timestamptz', nullable: true, default: null })
   deletedAt?: Date | null;
 

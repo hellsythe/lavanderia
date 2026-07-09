@@ -16,6 +16,9 @@ import { TypeormCustomerRepository } from './infrastructure/typeorm-customer.rep
       useClass: TypeormCustomerRepository,
     },
   ],
-  exports: [CustomersService],
+  // Exporto CUSTOMER_REPOSITORY para que SyncModule (que también usa el
+  // repo) pueda inyectarlo. CustomersService se sigue exportando para
+  // el consumer estándar (OrdersService, etc.).
+  exports: [CustomersService, CUSTOMER_REPOSITORY],
 })
 export class CustomersModule {}

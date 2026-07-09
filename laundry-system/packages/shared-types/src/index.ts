@@ -81,6 +81,11 @@ export const CustomerSchema = z.object({
   email: z.string().email().optional(),
   address: z.string().max(200).optional(),
   notes: z.string().max(500).optional(),
+  // Datos fiscales opcionales (clientes finales sin datos fiscales son OK).
+  /** RFC (Registro Federal de Contribuyentes, México). 12-13 chars. */
+  rfc: z.string().max(13).optional(),
+  /** Razón social (para facturación). */
+  legalName: z.string().max(120).optional(),
   deletedAt: TimestampSchema.nullable().optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
@@ -90,23 +95,119 @@ export type Customer = z.infer<typeof CustomerSchema>;
 /**
  * Input para crear un customer. El server genera id, tenantId, createdAt,
  * updatedAt, deletedAt. Si el name ya existe activo en el tenant → 409.
+ *
+ * Regla de contacto: al menos uno de `phone` o `email` debe estar presente
+ * (ambos pueden estar vacíos o solo string vacío — eso NO cuenta).
  */
-export const CreateCustomerInputSchema = z.object({
-  name: z.string().min(1).max(120),
-  phone: z.string().max(30).optional(),
-  email: z.string().email().optional().or(z.literal('')),
-  address: z.string().max(200).optional(),
-  notes: z.string().max(500).optional(),
-});
+export const CreateCustomerInputSchema = z
+  .object({
+    name: z.string().min(1).max(120),
+    phone: z
+      .string()
+      .trim()
+      .max(30)
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : undefined)),
+    email: z
+      .string()
+      .trim()
+      .max(200)
+      .email()
+      .optional()
+      .or(z.literal(''))
+      .transform((v) => (v && v.length > 0 ? v : undefined)),
+    address: z
+      .string()
+      .trim()
+      .max(200)
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : undefined)),
+    notes: z
+      .string()
+      .trim()
+      .max(500)
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : undefined)),
+    rfc: z
+      .string()
+      .trim()
+      .max(13)
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : undefined)),
+    legalName: z
+      .string()
+      .trim()
+      .max(120)
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : undefined)),
+  })
+  .refine(
+    (data) => Boolean(data.phone) || Boolean(data.email),
+    {
+      message: 'Indicá al menos un teléfono o un correo',
+      path: ['phone'],
+    },
+  );
 export type CreateCustomerInput = z.infer<typeof CreateCustomerInputSchema>;
 
-export const UpdateCustomerInputSchema = z.object({
-  name: z.string().min(1).max(120).optional(),
-  phone: z.string().max(30).nullable().optional(),
-  email: z.string().email().nullable().optional().or(z.literal('')),
-  address: z.string().max(200).nullable().optional(),
-  notes: z.string().max(500).nullable().optional(),
-});
+export const UpdateCustomerInputSchema = z
+  .object({
+    name: z.string().min(1).max(120).optional(),
+    phone: z
+      .string()
+      .trim()
+      .max(30)
+      .nullable()
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : v === null ? null : undefined)),
+    email: z
+      .string()
+      .trim()
+      .max(200)
+      .email()
+      .nullable()
+      .optional()
+      .or(z.literal(''))
+      .transform((v) => (v && v.length > 0 ? v : v === null ? null : undefined)),
+    address: z
+      .string()
+      .trim()
+      .max(200)
+      .nullable()
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : v === null ? null : undefined)),
+    notes: z
+      .string()
+      .trim()
+      .max(500)
+      .nullable()
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : v === null ? null : undefined)),
+    rfc: z
+      .string()
+      .trim()
+      .max(13)
+      .nullable()
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : v === null ? null : undefined)),
+    legalName: z
+      .string()
+      .trim()
+      .max(120)
+      .nullable()
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : v === null ? null : undefined)),
+  })
+  .refine(
+    (data) => {
+      // Si el cliente explícitamente está actualizando, permitimos que
+      // phone y email sean ambos null (representa "borrar el contacto").
+      // El backend ignora los nulls en su update — los campos quedan
+      // como están en DB. Si quiere validar "al menos uno", lo hace
+      // el service layer.
+      return true;
+    },
+  );
 export type UpdateCustomerInput = z.infer<typeof UpdateCustomerInputSchema>;
 
 /* =========================================================================

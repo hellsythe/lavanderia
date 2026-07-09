@@ -336,9 +336,11 @@ export const ordersApi = {
 
 // Necesitamos los types aquí también
 import type {
+  CreateCustomerInput,
   CreateOrderInput,
   CreateServiceCategoryInput,
   CreateServiceInput,
+  Customer,
   OnboardingStepInput,
   Order,
   OrderStatus,
@@ -347,6 +349,7 @@ import type {
   Service,
   ServiceCategory,
   Tenant,
+  UpdateCustomerInput,
   UpdateServiceCategoryInput,
   UpdateServiceInput,
 } from '@lavanderpro/shared-types';
@@ -397,6 +400,36 @@ export const servicesApi = {
   update: (id: string, input: UpdateServiceInput) =>
     apiRequest<Service>(`/services/${id}`, { method: 'PATCH', json: input }),
   remove: (id: string) => apiRequest<void>(`/services/${id}`, { method: 'DELETE' }),
+};
+
+// Customers helpers
+export interface ListCustomersParams {
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ListCustomersResponse {
+  items: Customer[];
+  total: number;
+}
+
+export const customersApi = {
+  list: (params: ListCustomersParams = {}) => {
+    const search = new URLSearchParams();
+    if (params.search) search.set('search', params.search);
+    if (params.limit !== undefined) search.set('limit', String(params.limit));
+    if (params.offset !== undefined) search.set('offset', String(params.offset));
+    const qs = search.toString();
+    return apiRequest<ListCustomersResponse>(`/customers${qs ? `?${qs}` : ''}`);
+  },
+  get: (id: string) => apiRequest<Customer>(`/customers/${id}`),
+  create: (input: CreateCustomerInput) =>
+    apiRequest<Customer>('/customers', { method: 'POST', json: input }),
+  update: (id: string, input: UpdateCustomerInput) =>
+    apiRequest<Customer>(`/customers/${id}`, { method: 'PATCH', json: input }),
+  remove: (id: string) =>
+    apiRequest<void>(`/customers/${id}`, { method: 'DELETE' }),
 };
 
 // Service Categories helpers
