@@ -74,23 +74,19 @@ export default function HomePage() {
       <Sidebar />
       <div className="min-w-0 flex flex-col">
         <Topbar title="Panel Principal" breadcrumb="Resumen de hoy" />
-        <main id="main" className="flex-1 p-5 sm:p-6">
+        <main id="main" className="flex-1 p-5 sm:p-6 flex flex-col gap-5">
           <OfflineBanner />
           <KpiStrip />
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mt-5">
-            <div className="xl:col-span-2">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 items-start">
+            <div className="xl:col-span-2 flex flex-col gap-3">
               <ActiveOrdersCard />
-            </div>
-            <div className="flex flex-col gap-5">
-              <RevenueCard />
-              <CycleTimeCard />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mt-3">
-            <div className="xl:col-span-2">
               <RecentHistoryCard />
             </div>
-            <TopClientsCard />
+            <div className="flex flex-col gap-3">
+              <RevenueCard />
+              <CycleTimeCard />
+              <TopClientsCard />
+            </div>
           </div>
         </main>
       </div>
