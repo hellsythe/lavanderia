@@ -26,7 +26,8 @@ export interface ServiceRepositoryPort {
   findByName(name: string, tenantId: string): Promise<Service | null>;
   list(tenantId: string, filters: ServiceListFilters): Promise<ListServicesResult>;
   create(
-    service: Omit<Service, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>,
+    service: Omit<Service, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'> &
+      Partial<Pick<Service, 'id'>>,
   ): Promise<Service>;
   update(service: Service): Promise<Service>;
   softDelete(id: string, tenantId: string): Promise<void>;
@@ -39,7 +40,8 @@ export interface ServiceCategoryRepositoryPort {
   findByName(name: string, tenantId: string): Promise<ServiceCategory | null>;
   list(tenantId: string, filters: ServiceCategoryListFilters): Promise<{ items: ServiceCategory[]; total: number }>;
   create(
-    cat: Omit<ServiceCategory, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>,
+    cat: Omit<ServiceCategory, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'> &
+      Partial<Pick<ServiceCategory, 'id'>>,
   ): Promise<ServiceCategory>;
   update(cat: ServiceCategory): Promise<ServiceCategory>;
   softDelete(id: string, tenantId: string): Promise<void>;

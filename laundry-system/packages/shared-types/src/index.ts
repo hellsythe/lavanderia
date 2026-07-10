@@ -245,6 +245,8 @@ export const ServiceCategorySchema = z.object({
 export type ServiceCategory = z.infer<typeof ServiceCategorySchema>;
 
 export const CreateServiceInputSchema = z.object({
+  /** Si está presente, el server lo usa en vez de generar (offline-first). */
+  id: UuidSchema.optional(),
   categoryId: UuidSchema.nullable().optional(),
   name: z.string().min(1).max(80),
   description: z.string().max(300).nullable().optional(),
@@ -268,6 +270,12 @@ export const UpdateServiceInputSchema = z.object({
 export type UpdateServiceInput = z.infer<typeof UpdateServiceInputSchema>;
 
 export const CreateServiceCategoryInputSchema = z.object({
+  /**
+   * Si está presente, el server lo usa en vez de generar. Usado por el
+   * cliente offline-first para que la row local y la del server
+   * compartan el mismo id (evita duplicación al hacer merge).
+   */
+  id: UuidSchema.optional(),
   name: z.string().min(1).max(60),
 });
 export type CreateServiceCategoryInput = z.infer<typeof CreateServiceCategoryInputSchema>;

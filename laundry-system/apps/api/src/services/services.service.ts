@@ -70,6 +70,7 @@ export class ServicesService {
       throw new ConflictException(`Ya existe un servicio activo con el nombre "${data.name}"`);
     }
     return this.services.create({
+      id: data.id, // Respetamos id del cliente si lo envía (offline-first).
       tenantId,
       categoryId: data.categoryId ?? null,
       name: data.name,
@@ -135,7 +136,6 @@ export class ServicesService {
     if (!c) throw new NotFoundException(`Categoría ${id} no encontrada`);
     return c;
   }
-
   async createCategory(input: CreateServiceCategoryInput, tenantId: string): Promise<ServiceCategory> {
     const parsed = CreateServiceCategoryInputSchema.safeParse(input);
     if (!parsed.success) {
@@ -145,11 +145,16 @@ export class ServicesService {
       });
     }
     const data = parsed.data;
+
     const existing = await this.categories.findByName(data.name, tenantId);
     if (existing) {
       throw new ConflictException(`Ya existe una categoría activa con el nombre "${data.name}"`);
     }
-    return this.categories.create({ tenantId, name: data.name });
+    return this.categories.create({
+      id: data.id, // Si el cliente envía id, lo respetamos (offline-first).
+      tenantId,
+      name: data.name,
+    });
   }
 
   async updateCategory(

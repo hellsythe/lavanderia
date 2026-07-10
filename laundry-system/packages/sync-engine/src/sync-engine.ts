@@ -103,6 +103,19 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
    */
   requestSync: () => {
     if (typeof window === 'undefined') return;
+    // Si estamos online, sync inmediato (sin debounce). El debounce solo
+    // aplica offline — esperamos a que vuelva la conexión para no
+    // spammear requests fallidos.
+    if (useNetworkStore.getState().state === 'online') {
+      if (pendingSyncId) {
+        clearTimeout(pendingSyncId);
+        pendingSyncId = null;
+      }
+      void get().fullSync();
+      return;
+    }
+    // Offline: debounced sync — se va a disparar cuando vuelva online
+    // (o cuando el heartbeat detecte la transición).
     if (pendingSyncId) clearTimeout(pendingSyncId);
     pendingSyncId = setTimeout(() => {
       void get().fullSync();
@@ -323,14 +336,12 @@ export function initSyncEngine(): void {
   if (typeof window === 'undefined') return;
   if (periodicSyncId) return;
 
-  // Cuando vuelve la conexión, sincronizar
+  // Cuando vuelve la conexión, sincronizar inmediatamente.
   useNetworkStore.subscribe((state, prev) => {
-    // Solo disparar en la transición offline → online (recuperación real).
-    // El cambio previo `state !== 'online'` también disparaba en
-    // syncing → online, causando un loop infinito: cada sync exitosa
-    // re-disparaba otro sync. Ahora: solo en recovery real.
-    if (state.state === 'online' && prev.state === 'offline') {
-      // Si nunca hicimos initial sync, hacerlo ahora
+    // Si el state transiciona a online y hay queue pendiente, sincronizar
+    // ya. Aceptamos syncing → online también (puede pasar si la
+    // transición inicial online → online se da justo al montarse).
+    if (state.state === 'online' && prev.state !== 'online') {
       if (useSyncStore.getState().needsInitialSync) {
         void useSyncStore.getState().initialSync();
       } else {

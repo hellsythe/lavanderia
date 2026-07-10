@@ -97,13 +97,18 @@ export class TypeormServiceRepository implements ServiceRepositoryPort {
   }
 
   async create(
-    service: Omit<Service, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>,
+    service: Omit<Service, 'createdAt' | 'updatedAt' | 'deletedAt'> & {
+      id?: string;
+    },
   ): Promise<Service> {
     const result = await this.repo.manager.query(
-      `INSERT INTO services (tenant_id, category_id, name, description, unit, unit_price, min_quantity, active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      // Si el cliente envía id, lo respetamos (offline-first). Si no, el
+      // server genera uno (default uuid_generate_v4()).
+      `INSERT INTO services (id, tenant_id, category_id, name, description, unit, unit_price, min_quantity, active)
+       VALUES (COALESCE($1, uuid_generate_v4()), $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING ${SERVICE_COLS}`,
       [
+        service.id ?? null,
         service.tenantId,
         service.categoryId,
         service.name,
@@ -219,13 +224,17 @@ export class TypeormServiceCategoryRepository {
   }
 
   async create(
-    cat: Omit<ServiceCategory, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>,
+    cat: Omit<ServiceCategory, 'createdAt' | 'updatedAt' | 'deletedAt'> & {
+      id?: string;
+    },
   ): Promise<ServiceCategory> {
     const result = await this.repo.manager.query(
-      `INSERT INTO service_categories (tenant_id, name)
-       VALUES ($1, $2)
+      // Si el cliente envía id, lo respetamos (offline-first). Si no, el
+      // server genera uno (default uuid_generate_v4()).
+      `INSERT INTO service_categories (id, tenant_id, name)
+       VALUES (COALESCE($1, uuid_generate_v4()), $2, $3)
        RETURNING ${CATEGORY_COLS}`,
-      [cat.tenantId, cat.name],
+      [cat.id ?? null, cat.tenantId, cat.name],
     );
     const rows = result as Record<string, unknown>[];
     if (!rows[0]) throw new Error('Category creation returned no row');

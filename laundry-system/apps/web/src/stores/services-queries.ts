@@ -107,10 +107,17 @@ export function useCreateService(tenantId: string) {
         timestamp: Date.now(),
       });
 
-      // 3. Best-effort API
+      // 3. Best-effort API con el MISMO id (offline-first). Si el server
+      // confirma, mergeFromServer hace upsert → la local y la del server
+      // son la misma row. Sin duplicación.
       if (useNetworkStore.getState().state !== 'offline') {
         try {
-          await servicesApi.create(input);
+          const serverRow = await servicesApi.create({
+            ...input,
+            id: local.id,
+          });
+          // Mapear domain → snapshot (el repo lo espera).
+          await serviceRepo.mergeFromServer(tenantId, [serverRow]);
         } catch (e) {
           console.warn('[useCreateService] api call failed, will sync later:', e);
         }
