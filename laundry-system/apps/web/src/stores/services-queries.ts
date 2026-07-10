@@ -48,8 +48,9 @@ export function useServices(params: UseServicesParams = {}) {
       if (useNetworkStore.getState().state !== 'offline') {
         try {
           const response = await servicesApi.list(apiParams);
-          await serviceRepo.bulkPut(response.items);
-          return response.items;
+          // MERGE con cache local — preserva rows offline-pending.
+          if (!tenantId) return response.items;
+          return await serviceRepo.mergeFromServer(tenantId, response.items);
         } catch (e) {
           console.warn('[useServices] fetch failed, using cache:', e);
           if (!tenantId) return [];

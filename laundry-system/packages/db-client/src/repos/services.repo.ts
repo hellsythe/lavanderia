@@ -6,6 +6,7 @@
  */
 import type { ServiceSnapshot } from '../schema';
 import { getDb } from '../schema';
+import { lwwMerge } from '../lib/merge';
 
 const db = () => getDb();
 
@@ -49,6 +50,26 @@ export const serviceRepo = {
 
   async bulkPut(snaps: ServiceSnapshot[]): Promise<void> {
     await db().services.bulkPut(snaps);
+  },
+
+  /**
+   * MERGE con la respuesta del server (sync pull desde la app).
+   *
+   * Preserva las rows locales que el server no devolvió (offline-
+   * pending). LWW por `updatedAt` para que ediciones offline con
+   * `updatedAt` local > server no se sobreescriban.
+   *
+   * Devuelve la lista mergeada y filtrada (sin soft-deleted).
+   */
+  async mergeFromServer(
+    tenantId: string,
+    serverItems: ServiceSnapshot[],
+  ): Promise<ServiceSnapshot[]> {
+    if (serverItems.length > 0) {
+      await db().services.bulkPut(serverItems);
+    }
+    const local = await this.list(tenantId, { includeDeleted: true });
+    return lwwMerge(local, serverItems);
   },
 
   /**

@@ -12,6 +12,7 @@
  */
 import type { Customer } from '@lavanderpro/shared-types';
 import { getDb, type CustomerSnapshot } from '../schema';
+import { lwwMerge } from '../lib/merge';
 
 const db = () => getDb();
 
@@ -66,6 +67,33 @@ export const customerRepo = {
   async bulkPut(customers: Customer[]): Promise<void> {
     if (customers.length === 0) return;
     await db().customers.bulkPut(customers.map(toSnapshot));
+  },
+
+  /**
+   * MERGE con la respuesta del server (sync pull desde la app).
+   *
+   * Preserva las rows locales que el server no devolvió (offline-
+   * pending). LWW por `updatedAt` para que ediciones offline con
+   * `updatedAt` local > server no se sobreescriban.
+   *
+   * Devuelve la lista mergeada (sin soft-deleted).
+   */
+  async mergeFromServer(
+    tenantId: string,
+    serverItems: Customer[],
+  ): Promise<Customer[]> {
+    if (serverItems.length > 0) {
+      await db().customers.bulkPut(serverItems.map(toSnapshot));
+    }
+    const localSnapshots = await db()
+      .customers.where('tenantId')
+      .equals(tenantId)
+      .toArray();
+    const mergedSnapshots = lwwMerge(localSnapshots, serverItems.map(toSnapshot));
+    return mergedSnapshots
+      .filter((c) => !c.deletedAt)
+      .map(toDomain)
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
   },
 
   async put(customer: Customer): Promise<void> {

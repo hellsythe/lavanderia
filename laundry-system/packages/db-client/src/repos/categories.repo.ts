@@ -6,6 +6,7 @@
  */
 import type { CategorySnapshot } from '../schema';
 import { getDb } from '../schema';
+import { lwwMerge } from '../lib/merge';
 
 const db = () => getDb();
 
@@ -40,6 +41,33 @@ export const categoryRepo = {
 
   async bulkPut(snaps: CategorySnapshot[]): Promise<void> {
     await db().categories.bulkPut(snaps);
+  },
+
+  /**
+   * MERGE con la respuesta del server (sync pull desde la app).
+   *
+   * A diferencia de `bulkPut`, esto PRESERVA las rows locales que el
+   * server no devolvió — esas son las que están pendientes de subir
+   * (sync_queue aún no procesada) o que el server no conoce.
+   *
+   * Estrategia LWW: para cada id presente en local o server, gana el
+   * que tenga `updatedAt` más alto. Así, una edición offline con
+   * `updatedAt` local > server.updatedAt NO se sobreescribe.
+   *
+   * Devuelve la lista mergeada (ya filtrada: sin soft-deleted).
+   */
+  async mergeFromServer(
+    tenantId: string,
+    serverItems: CategorySnapshot[],
+  ): Promise<CategorySnapshot[]> {
+    if (serverItems.length > 0) {
+      // put = upsert por primary key. NO borra lo que no esté acá.
+      await db().categories.bulkPut(serverItems);
+    }
+    // Releer todo el cache (server upserted + locales intactos) y mergear
+    // por LWW. Esto unifica la versión final en el cliente.
+    const local = await this.list(tenantId, { includeDeleted: true });
+    return lwwMerge(local, serverItems);
   },
 
   /**

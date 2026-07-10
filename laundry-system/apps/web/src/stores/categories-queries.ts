@@ -45,8 +45,12 @@ export function useCategories(params: UseCategoriesParams = {}) {
       if (useNetworkStore.getState().state !== 'offline') {
         try {
           const response = await categoriesApi.list();
-          await categoryRepo.bulkPut(response.items);
-          return response.items;
+          // MERGE con cache local en vez de REPLACE — preserva rows
+          // offline-pending (creadas/editadas sin internet, aún no subidas).
+          // Aplica LWW por updatedAt: edición offline con local.updatedAt
+          // > server.updatedAt NO se sobreescribe.
+          if (!tenantId) return response.items;
+          return await categoryRepo.mergeFromServer(tenantId, response.items);
         } catch (e) {
           console.warn('[useCategories] fetch failed, using cache:', e);
           if (!tenantId) return [];

@@ -40,9 +40,10 @@ export function useCustomers(params: UseCustomersParams = {}) {
       if (useNetworkStore.getState().state !== 'offline') {
         try {
           const response = await customersApi.list(apiParams);
-          // Mapear domain → snapshot (Customer→CustomerSnapshot).
-          await customerRepo.bulkPut(response.items);
-          return response.items;
+          // MERGE con cache local — preserva customers offline-pending
+          // (creados/editados sin internet, aún no sincronizados).
+          if (!tenantId) return response.items as unknown as CustomerSnapshot[];
+          return await customerRepo.mergeFromServer(tenantId, response.items);
         } catch (e) {
           console.warn('[useCustomers] fetch failed, using cache:', e);
           if (!tenantId) return [];
