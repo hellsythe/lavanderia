@@ -20,6 +20,7 @@ import {
   customerRepo,
   metaRepo,
   orderRepo,
+  paymentRepo,
   serviceRepo,
   syncQueueRepo,
   type ServiceSnapshot,
@@ -27,6 +28,7 @@ import {
 import type {
   Order,
   Customer,
+  Payment,
   Service,
   ServiceCategory,
   SyncChange,
@@ -216,6 +218,15 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
             const winner = resolveConflict(local, remote);
             await serviceRepo.put(winner);
           }
+        } else if (change.entity === 'payment') {
+          const local = await paymentRepo.getById(change.entityId);
+          const remote = change.payload as Payment;
+          if (!local) {
+            await paymentRepo.put(remote);
+          } else {
+            const winner = resolveConflict(local, remote);
+            await paymentRepo.put(winner);
+          }
         }
       }
 
@@ -298,6 +309,9 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
         } else if (change.entity === 'service') {
           const remote = change.payload as unknown as ServiceSnapshot;
           await serviceRepo.put(remote);
+        } else if (change.entity === 'payment') {
+          const remote = change.payload as Payment;
+          await paymentRepo.put(remote);
         }
       }
 

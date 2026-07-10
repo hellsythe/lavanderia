@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -23,17 +24,25 @@ import {
   ORDER_REPOSITORY,
   type OrderRepositoryPort,
 } from './ports/order-repository.port';
+import { ServicesService } from '../services/services.service';
 
 /**
  * OrdersService — use cases.
  *
  * Para MVP los exponemos como métodos del service (en lugar de un use case
  * por método). Si crece, extraer a clases CreateOrderUseCase, etc.
+ *
+ * Ahora con lookup de servicios: usa el catálogo (ServiceRepositoryPort)
+ * como source of truth para precios; acepta hints del cliente como
+ * fallback cuando el servicio no está registrado (offline-first).
  */
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     @Inject(ORDER_REPOSITORY) private readonly orders: OrderRepositoryPort,
+    private readonly servicesService: ServicesService,
   ) {}
 
   async create(input: CreateOrderInput, tenantId: string): Promise<Order> {
@@ -51,7 +60,6 @@ export class OrdersService {
       );
     }
 
-    // MVP: si no hay customerId, requerimos uno (módulo customers pendiente).
     if (!parsed.data.customerId) {
       throw new BadRequestException(
         'customerId requerido (módulo customers pendiente de implementación)',
@@ -59,23 +67,57 @@ export class OrdersService {
     }
 
     const customerName = parsed.data.customerName ?? 'Cliente';
-    const items: OrderItem[] = parsed.data.items.map((i) => {
-      // TODO: cuando exista ServicesRepository, hacer lookup del unitPrice.
-      const unitPrice = 0;
-      const unit: 'kg' | 'piece' = 'piece';
-      const subtotal = unitPrice * i.quantity;
-      return {
-        id: randomUUID(),
-        orderId: '', // se asigna al guardar
-        serviceId: i.serviceId,
-        serviceName: '', // TODO: lookup
-        unit,
-        quantity: i.quantity,
-        unitPrice,
-        subtotal,
-        notes: i.notes,
-      };
-    });
+
+    // Construir items con lookup de servicios (source of truth).
+    const items: OrderItem[] = [];
+    for (const it of parsed.data.items) {
+      let svc = null;
+      try {
+        svc = await this.servicesService.findServiceById(it.serviceId, tenantId);
+      } catch {
+        // 404 → servicio no encontrado, usamos hints del cliente como fallback
+      }
+
+      if (svc) {
+        // Servicio conocido: usamos precios/nombres del catálogo
+        const subtotal = svc.unitPrice * it.quantity;
+        items.push({
+          id: randomUUID(),
+          orderId: '', // se asigna al guardar
+          serviceId: it.serviceId,
+          serviceName: svc.name,
+          unit: svc.unit,
+          quantity: it.quantity,
+          unitPrice: svc.unitPrice,
+          subtotal,
+          notes: it.notes,
+        });
+      } else {
+        // Fallback: hints del cliente (offline-first: el servicio pudo
+        // crearse en el catálogo local y aún no llegar al server).
+        const hintUnitPrice = it.unitPrice ?? 0;
+        const hintServiceName = it.serviceName ?? it.serviceId;
+        const hintUnit = it.unit ?? 'piece';
+        const subtotal = hintUnitPrice * it.quantity;
+
+        this.logger.warn(
+          `Servicio ${it.serviceId} no encontrado en catálogo (tenant ${tenantId}). ` +
+            `Usando hints del cliente: ${hintServiceName} @ $${hintUnitPrice}/${hintUnit}.`,
+        );
+
+        items.push({
+          id: randomUUID(),
+          orderId: '',
+          serviceId: it.serviceId,
+          serviceName: hintServiceName,
+          unit: hintUnit,
+          quantity: it.quantity,
+          unitPrice: hintUnitPrice,
+          subtotal,
+          notes: it.notes,
+        });
+      }
+    }
 
     const { total } = recomputeTotals(items);
 
@@ -101,7 +143,10 @@ export class OrdersService {
     return order;
   }
 
-  async list(tenantId: string, filters: ListOrdersFilters): Promise<ListOrdersResult> {
+  async list(
+    tenantId: string,
+    filters: ListOrdersFilters,
+  ): Promise<ListOrdersResult> {
     return this.orders.list(tenantId, filters);
   }
 
@@ -123,7 +168,9 @@ export class OrdersService {
     return this.orders.save(updated);
   }
 
-  async countByStatus(tenantId: string): Promise<Record<OrderStatus, number>> {
+  async countByStatus(
+    tenantId: string,
+  ): Promise<Record<OrderStatus, number>> {
     return this.orders.countByStatus(tenantId);
   }
 }

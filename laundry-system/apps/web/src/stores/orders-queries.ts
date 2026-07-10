@@ -246,3 +246,65 @@ export function useCreateOrder(tenantId: string) {
     },
   });
 }
+
+/**
+ * useUpdateOrderTotals — actualiza `paid` y `balance` del pedido.
+ *
+ * Se llama después de registrar pagos en el POS para que el Order
+ * refleje el cobro real (offline-first). El server re-computa en el
+ * pull, pero localmente el order ya muestra los totales correctos.
+ */
+export function useUpdateOrderTotals() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      paid,
+    }: {
+      id: string;
+      paid: number;
+    }): Promise<Order> => {
+      const existing = await orderRepo.getById(id);
+      if (!existing) throw new Error(`Order ${id} not found locally`);
+
+      const total = existing.total;
+      const safePaid = Math.max(0, paid);
+      const balance = Math.max(0, total - safePaid);
+      const updated: Order = {
+        ...existing,
+        paid: safePaid,
+        balance,
+        updatedAt: Date.now(),
+      };
+
+      await orderRepo.put(updated);
+      await enqueueSync({
+        entity: 'order',
+        entityId: id,
+        op: 'update',
+        payload: updated,
+        timestamp: Date.now(),
+      });
+
+      // Best-effort API directo (si online)
+      if (useNetworkStore.getState().state !== 'offline') {
+        try {
+          // El server recalcula paid/balance al recibir pagos; no hace
+          // falta un endpoint dedicado. La invalidación del cache local
+          // se hace en onSuccess.
+        } catch (e) {
+          console.warn(
+            '[useUpdateOrderTotals] api call failed, will sync later:',
+            e,
+          );
+        }
+      }
+
+      return updated;
+    },
+    onSuccess: (order) => {
+      qc.invalidateQueries({ queryKey: orderKeys.all });
+      qc.setQueryData(orderKeys.detail(order.id), order);
+    },
+  });
+}

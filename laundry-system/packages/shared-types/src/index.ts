@@ -501,6 +501,24 @@ export const CreateOrderItemInputSchema = z.object({
   serviceId: UuidSchema,
   quantity: z.number().positive(),
   notes: z.string().max(200).optional(),
+  /**
+   * Hint del cliente: precio unitario. Si está presente, el server
+   * lo usa como fallback cuando el servicio no existe en el catálogo.
+   * Si el servicio SÍ existe, el server usa el valor del catálogo
+   * (source of truth).
+   */
+  unitPrice: z.number().nonnegative().optional(),
+  /**
+   * Hint del cliente: nombre denormalizado del servicio. Mismo
+   * comportamiento que unitPrice: fallback si el server no conoce
+   * el serviceId.
+   */
+  serviceName: z.string().max(80).optional(),
+  /**
+   * Hint del cliente: unidad de medida (kg o piece). Fallback si el
+   * server no conoce el serviceId.
+   */
+  unit: ServiceUnitSchema.optional(),
 });
 export type CreateOrderItemInput = z.infer<typeof CreateOrderItemInputSchema>;
 

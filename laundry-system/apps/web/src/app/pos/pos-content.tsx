@@ -25,9 +25,11 @@ import type { PaymentMethod } from '@lavanderpro/shared-types';
 import type { CustomerSnapshot, ServiceSnapshot } from '@lavanderpro/db-client';
 import {
   Banknote,
+  CheckCircle2,
   CreditCard,
   Inbox,
   Plus,
+  Printer,
   Receipt,
   Search as SearchIcon,
   ShoppingCart,
@@ -50,7 +52,7 @@ import {
   useCustomers,
 } from '~/stores/customers-queries';
 import { useServices } from '~/stores/services-queries';
-import { useCreateOrder } from '~/stores/orders-queries';
+import { useCreateOrder, useUpdateOrderTotals } from '~/stores/orders-queries';
 import { useCreatePayment } from '~/stores/payments-queries';
 
 type ViewMode = 'populares' | 'categorias';
@@ -70,6 +72,21 @@ type NewCustomerForm = {
   phone?: string;
   email?: string;
 };
+
+/**
+ * Línea de pago aplicada al pedido, lista para imprimir en el ticket.
+ * Snapshot de lo que se cobró — no se vuelve a usar en la lógica del POS.
+ */
+interface TicketPaymentLine {
+  method: PaymentMethod;
+  /** Monto que se imputa a este pedido (el `amount` del Payment). */
+  amount: number;
+  /** Solo efectivo: monto físico entregado. */
+  received?: number;
+  /** Cambio devuelto (solo efectivo, derivado). */
+  change?: number;
+  reference?: string;
+}
 
 /**
  * Línea de cobro que el cajero puede apilar (pago mixto). El POS arranca
@@ -152,16 +169,18 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = PAYMENT_METHODS.reduce(
  * Flujo de checkout:
  *  - "Proceder al pago" abre CheckoutModal con 3 métodos (Efectivo /
  *    Tarjeta / Tarjeta de puntos).
- *  - En efectivo: input del monto entregado por el cliente, cálculo del
- *    cambio, se puede cobrar parcial como anticipo.
- *  - Tarjeta y Tarjeta de puntos: el monto es siempre el saldo pendiente
- *    (editable para cobre parcial).
- *  - Permite múltiples líneas de pago (cobro mixto). Al confirmar se
- *    crea el pedido + los pagos asociados en una sola operación
- *    offline-first.
+ *  - En efectivo: dos inputs — "A cuenta del pedido" (anticipo) y
+ *    "Efectivo recibido" — calculamos cambio, permitimos anticipos.
+ *  - Tarjeta y Tarjeta de puntos: input "Monto a cobrar" (editable para
+ *    cobro parcial).
+ *  - Permite múltiples líneas de pago (cobro mixto). Al confirmar:
+ *      1. Crea el pedido (offline-first).
+ *      2. Registra los pagos asociados.
+ *      3. Actualiza `paid` / `balance` del pedido con la suma cobrada.
+ *      4. Abre el modal de ticket para impresión térmica.
  *
- * Customer puede ser opcional. Para MVP dejamos el customer picker
- * simple con un modal de "Nuevo cliente".
+ * Cliente es obligatorio para cobrar (el pedido persiste customerId +
+ * customerName denormalizados para coleccionar el saldo pendiente).
  */
 export function PosContent() {
   const tenant = useAuth((s) => s.tenant);
@@ -176,6 +195,17 @@ export function PosContent() {
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
   const [orderNotes, setOrderNotes] = useState('');
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  /**
+   * Snapshot del pedido recién creado, junto con los pagos aplicados
+   * y el cliente, para alimentar el modal de ticket / impresión.
+   * Vive en el state de PosContent (no en el modal) para sobrevivir
+   * al re-render y permitir reabrir el ticket tras cerrarlo.
+   */
+  const [ticketState, setTicketState] = useState<{
+    order: import('@lavanderpro/shared-types').Order;
+    customer: CustomerSnapshot;
+    payments: TicketPaymentLine[];
+  } | null>(null);
 
   // === Data ===
   const { data: servicesData = [], isLoading: isLoadingServices } = useServices({
@@ -187,6 +217,7 @@ export function PosContent() {
     tenantId,
   });
   const createOrderMut = useCreateOrder(tenantId ?? '');
+  const updateOrderTotalsMut = useUpdateOrderTotals();
   const createPaymentMut = useCreatePayment(tenantId ?? '');
   const createCustomerMut = useCreateCustomer(tenantId ?? '');
 
@@ -285,17 +316,17 @@ export function PosContent() {
   }, [customersData, customerPickerQuery]);
 
   /**
-   * Al confirmar el checkout, crea el pedido + N pagos en una sola
-   * operación. Si crear el pedido falla, el modal queda abierto con el
-   * error para que el cajero pueda reintentar.
+   * Al confirmar el checkout, crea el pedido + N pagos, actualiza los
+   * totales del pedido, y abre el modal de ticket. Si crear el pedido
+   * falla, el modal queda abierto con el error para que el cajero
+   * pueda reintentar.
    *
-   * Si crear el pedido tiene éxito pero el/los pagos fallan, igualmente
-   * limpiamos el carrito (el pedido quedó hecho en local) y enqueueamos
-   * los pagos — la UI de pagos es secundaria y se reconcilia luego.
+   * Si crear el pedido tiene éxito pero los pagos fallan online, los
+   * pagos parciales quedan en sync_queue y se suben al reconectar; el
+   * ticket se imprime igual con los pagos locales (es la fuente de
+   * verdad en el momento).
    */
   const handleConfirmCheckout = async (payments: PaymentDraft[]) => {
-    // Botón "Proceder al pago" solo se habilita con cliente
-    // seleccionado; este assert es defensivo.
     if (!selectedCustomer) return;
 
     const validPayments = payments.filter(
@@ -323,9 +354,9 @@ export function PosContent() {
       const created = await createOrderMut.mutateAsync(orderInput);
 
       // Cobros: se crean en paralelo para no bloquear. Si alguno falla,
-      // la UI ya muestra el pedido; los pagos parciales quedan
-      // en sync_queue y se suben al reconectar.
-      const results = await Promise.allSettled(
+      // los pagos parciales quedan en sync_queue y se suben al
+      // reconectar.
+      const paymentResults = await Promise.allSettled(
         validPayments.map((p) =>
           createPaymentMut.mutateAsync({
             orderId: created.id,
@@ -336,7 +367,7 @@ export function PosContent() {
         ),
       );
 
-      const failed = results.filter((r) => r.status === 'rejected');
+      const failed = paymentResults.filter((r) => r.status === 'rejected');
       if (failed.length > 0) {
         // eslint-disable-next-line no-console
         console.warn(
@@ -345,15 +376,73 @@ export function PosContent() {
         );
       }
 
-      // Reset state en éxito (incluso si algún pago falló online — están
-      // encolados y se aplican cuando vuelva la conexión).
+      // Suma total cobrada (anticipos + cobros no-cash).
+      const totalPaid = validPayments.reduce(
+        (sum, p) => sum + (p.amount as number),
+        0,
+      );
+
+      // Actualizar paid/balance del pedido. No esperamos: si la query
+      // falla, el ticket ya muestra el total cobrado de los pagos que
+      // sí se persistieron localmente. La UI usa el Order con paid
+      // actualizado para reflejar el saldo pendiente correcto.
+      let finalOrder = created;
+      try {
+        finalOrder = await updateOrderTotalsMut.mutateAsync({
+          id: created.id,
+          paid: totalPaid,
+        });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[pos] useUpdateOrderTotals falló, calculando totales localmente:',
+          e,
+        );
+        // Fallback: aplicar manualmente en memoria para el ticket.
+        finalOrder = {
+          ...created,
+          paid: totalPaid,
+          balance: Math.max(0, created.total - totalPaid),
+          updatedAt: Date.now(),
+        };
+      }
+
+      // Snapshot de pagos para el ticket (incluye `received` y `change`
+      // derivados, que no se persisten en Payment).
+      const ticketPayments: TicketPaymentLine[] = validPayments.map((p) => {
+        const amt = p.amount as number;
+        if (p.method === 'cash') {
+          const received = typeof p.received === 'number' ? p.received : amt;
+          // Cambio de esta línea: max(0, recibido - min(imputado, restante antes))
+          // Como el orden de las líneas importa y ya validamos en el UI
+          // que recibido >= amount, usamos:
+          const change = Math.max(0, received - amt);
+          return {
+            method: p.method,
+            amount: amt,
+            received,
+            change,
+            reference: p.reference,
+          };
+        }
+        return {
+          method: p.method,
+          amount: amt,
+          reference: p.reference,
+        };
+      });
+
+      // Reset state del carrito / cliente / notas, y abrir ticket.
       setCart(new Map());
       setSelectedCustomer(null);
       setOrderNotes('');
       setCheckoutOpen(false);
+      setTicketState({
+        order: finalOrder,
+        customer: selectedCustomer,
+        payments: ticketPayments,
+      });
     } catch (e) {
-      // El error ya lo muestra el mutation; dejamos el modal abierto
-      // para que el cajero pueda reintentar o ajustar.
       // eslint-disable-next-line no-console
       console.error('[pos] checkout failed:', e);
     }
@@ -461,6 +550,13 @@ export function PosContent() {
         }}
         submitting={createCustomerMut.isPending}
         error={createCustomerMut.error}
+      />
+
+      <TicketModal
+        open={ticketState !== null}
+        ticket={ticketState}
+        tenantName={tenant?.name}
+        onClose={() => setTicketState(null)}
       />
     </AppShell>
   );
@@ -1677,4 +1773,533 @@ export function parseCheckoutForm(payments: PaymentDraft[]): PaymentDraft[] {
     if (r.success) parsed.push(r.data);
   }
   return parsed;
+}
+
+/* =========================================================================
+ * TicketModal — confirmación + impresión térmica.
+ *
+ * Tras confirmar el pago, se muestra este modal con un preview del
+ * ticket. El cajero puede:
+ *  - Imprimir el ticket (botón "Imprimir") — abre una nueva ventana
+ *    con el HTML formateado a 80mm y dispara window.print().
+ *  - Cerrar y seguir con el siguiente cliente.
+ *
+ * Si la página pierde el ticket (refresh), se pierde el state — eso es
+ * OK para MVP; el pedido queda persistido localmente y se puede
+ * reimprimir desde la pantalla de detalle (TODO).
+ * ========================================================================= */
+
+const TICKET_TENANT_FALLBACK = 'LavanderPro';
+
+function formatDateTime(ts: number): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function formatMoney(n: number): string {
+  return n.toLocaleString('es-MX', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function paymentMethodLabel(m: PaymentMethod): string {
+  return PAYMENT_LABELS[m] ?? m;
+}
+
+function TicketModal({
+  open,
+  ticket,
+  tenantName,
+  onClose,
+}: {
+  open: boolean;
+  ticket: {
+    order: import('@lavanderpro/shared-types').Order;
+    customer: CustomerSnapshot;
+    payments: TicketPaymentLine[];
+  } | null;
+  tenantName?: string;
+  onClose: () => void;
+}) {
+  if (!ticket) return null;
+  const { order, customer, payments } = ticket;
+  const totalChange = payments.reduce(
+    (sum, p) => sum + (p.change ?? 0),
+    0,
+  );
+  const hasAnyChange = totalChange > 0;
+
+  return (
+    <Modal open={open} onOpenChange={(o) => !o && onClose()}>
+      <Modal.Content className="max-w-md">
+        <Modal.Header>
+          <Modal.Title>
+            <span className="inline-flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-accent" />
+              ¡Pedido creado!
+            </span>
+          </Modal.Title>
+          <Modal.Description>
+            El pedido{' '}
+            <strong className="num text-fg">
+              {order.code === 'PENDING' ? `#${order.id.slice(0, 6)}` : order.code}
+            </strong>{' '}
+            se guardó localmente. Imprimí el ticket para entregárselo al
+            cliente.
+          </Modal.Description>
+        </Modal.Header>
+
+        <Modal.Body>
+          {/* Preview del ticket — escalado a UI normal, formateado a 80mm al imprimir. */}
+          <div className="flex justify-center">
+            <TicketPreview
+              order={order}
+              customer={customer}
+              payments={payments}
+              tenantName={tenantName ?? TICKET_TENANT_FALLBACK}
+            />
+          </div>
+
+          {hasAnyChange && (
+            <Alert variant="info" icon={<Banknote className="h-4 w-4" />}>
+              Devolver cambio al cliente:{' '}
+              <strong className="num">${formatMoney(totalChange)}</strong>
+            </Alert>
+          )}
+        </Modal.Body>
+
+        <Modal.Footer>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cerrar
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              printTicket({
+                order,
+                customer,
+                payments,
+                tenantName: tenantName ?? TICKET_TENANT_FALLBACK,
+              });
+            }}
+          >
+            <Printer className="h-4 w-4" />
+            Imprimir ticket
+          </Button>
+        </Modal.Footer>
+      </Modal.Content>
+    </Modal>
+  );
+}
+
+/* -------------------------------------------------------------------------
+ * TicketPreview — HTML del ticket.
+ *
+ * El mismo JSX se usa para el preview en el modal y para la versión
+ * imprimible (printTicket genera HTML crudo que se inyecta en una
+ * nueva ventana). Los estilos para impresión están en TICKET_PRINT_CSS
+ * y se inyectan inline.
+ *
+ * Ancho: 80mm (típico de impresoras térmicas de 3"). El padding
+ * interno es 4mm para dejar margen con la carcasa.
+ * ------------------------------------------------------------------------- */
+function TicketPreview({
+  order,
+  customer,
+  payments,
+  tenantName,
+}: {
+  order: import('@lavanderpro/shared-types').Order;
+  customer: CustomerSnapshot;
+  payments: TicketPaymentLine[];
+  tenantName: string;
+}) {
+  return (
+    <div className="ticket-receipt bg-white text-black font-mono text-[11px] leading-tight shadow-md">
+      <div className="text-center font-bold text-[14px] mb-1">
+        {tenantName.toUpperCase()}
+      </div>
+      <div className="text-center text-[10px] mb-1">
+        {formatDateTime(order.createdAt)}
+      </div>
+      <div className="text-center font-bold mb-1">
+        {order.code === 'PENDING' ? `PEDIDO #${order.id.slice(0, 6).toUpperCase()}` : `PEDIDO ${order.code}`}
+      </div>
+
+      <div className="border-t border-dashed border-black my-1" />
+      <div className="text-[10px]">
+        <div>
+          <span className="font-semibold">Cliente:</span> {customer.name}
+        </div>
+        {customer.phone && (
+          <div>
+            <span className="font-semibold">Tel:</span> {customer.phone}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-dashed border-black my-1" />
+      <table className="w-full text-[10px]">
+        <thead>
+          <tr className="text-left">
+            <th className="font-semibold">Servicio</th>
+            <th className="text-center font-semibold w-8">Cant</th>
+            <th className="text-right font-semibold w-14">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {order.items.map((it) => (
+            <tr key={it.id}>
+              <td className="align-top pr-1">
+                {it.serviceName}
+                <div className="text-[9px] opacity-70">
+                  ${formatMoney(it.unitPrice)} / {it.unit}
+                </div>
+              </td>
+              <td className="text-center align-top">{it.quantity}</td>
+              <td className="text-right align-top num">
+                ${formatMoney(it.subtotal)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="border-t border-dashed border-black my-1" />
+      <div className="flex justify-between font-bold text-[13px]">
+        <span>TOTAL</span>
+        <span className="num">${formatMoney(order.total)}</span>
+      </div>
+      <div className="flex justify-between text-[10px]">
+        <span>Cobrado</span>
+        <span className="num">${formatMoney(order.paid)}</span>
+      </div>
+      {order.balance > 0 && (
+        <div className="flex justify-between text-[10px]">
+          <span>Pendiente</span>
+          <span className="num">${formatMoney(order.balance)}</span>
+        </div>
+      )}
+
+      {payments.length > 0 && (
+        <>
+          <div className="border-t border-dashed border-black my-1" />
+          <div className="text-[10px]">
+            <div className="font-semibold mb-0.5">Pagos:</div>
+            {payments.map((p, i) => (
+              <div key={i} className="flex flex-col">
+                <div className="flex justify-between">
+                  <span>• {paymentMethodLabel(p.method)}</span>
+                  <span className="num">${formatMoney(p.amount)}</span>
+                </div>
+                {p.method === 'cash' &&
+                  typeof p.received === 'number' &&
+                  p.received !== p.amount && (
+                    <div className="flex justify-between pl-3 text-[9px] opacity-80">
+                      <span>  Recibido: ${formatMoney(p.received)}</span>
+                      {p.change && p.change > 0 ? (
+                        <span>
+                          Cambio:{' '}
+                          <span className="font-semibold">
+                            ${formatMoney(p.change)}
+                          </span>
+                        </span>
+                      ) : null}
+                    </div>
+                  )}
+                {p.reference && (
+                  <div className="pl-3 text-[9px] opacity-80">
+                    Ref: {p.reference}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {order.notes && (
+        <>
+          <div className="border-t border-dashed border-black my-1" />
+          <div className="text-[10px]">
+            <span className="font-semibold">Notas:</span> {order.notes}
+          </div>
+        </>
+      )}
+
+      <div className="border-t border-dashed border-black my-1" />
+      <div className="text-center text-[10px]">¡Gracias por su compra!</div>
+      <div className="text-center text-[9px] opacity-70">
+        Conserve este ticket para retirar su pedido.
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------
+ * TICKET_PRINT_CSS — estilos para impresión térmica 80mm.
+ *
+ * Ancho fijo 80mm. Padding 4mm interno. Tipografía monospace para que
+ * las columnas queden alineadas incluso con caracteres anchos.
+ * Listado sin imágenes, sin @font-face, sin JS — solo HTML+CSS que
+ * cualquier driver de impresora térmica puede rasterizar.
+ * ------------------------------------------------------------------------- */
+const TICKET_PRINT_CSS = `
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+  * {
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    color: #000;
+    font-family: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+    font-size: 11px;
+    line-height: 1.25;
+  }
+  .ticket-receipt {
+    width: 80mm;
+    padding: 4mm;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  th, td {
+    padding: 1px 0;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .border-dashed {
+    border-top: 1px dashed #000;
+  }
+  .text-right { text-align: right; }
+  .text-center { text-align: center; }
+  .text-left { text-align: left; }
+  .font-bold { font-weight: 700; }
+  .font-semibold { font-weight: 600; }
+  .text-[10px] { font-size: 10px; }
+  .text-[9px]  { font-size: 9px; }
+  .text-[13px] { font-size: 13px; }
+  .text-[14px] { font-size: 14px; }
+`;
+
+function printTicket({
+  order,
+  customer,
+  payments,
+  tenantName,
+}: {
+  order: import('@lavanderpro/shared-types').Order;
+  customer: CustomerSnapshot;
+  payments: TicketPaymentLine[];
+  tenantName: string;
+}) {
+  if (typeof window === 'undefined') return;
+
+  const win = window.open('', 'PRINT_TICKET', 'width=400,height=600');
+  if (!win) {
+    // Pop-up bloqueado. Fallback: imprimir in-page.
+    window.print();
+    return;
+  }
+
+  const ticketHtml = renderTicketHTML({ order, customer, payments, tenantName });
+  win.document.open();
+  win.document.write(`<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Ticket ${order.code === 'PENDING' ? order.id.slice(0, 6) : order.code}</title>
+<style>${TICKET_PRINT_CSS}</style>
+</head>
+<body>
+${ticketHtml}
+</body>
+</html>`);
+  win.document.close();
+
+  // Esperar a que el documento cargue antes de imprimir.
+  const triggerPrint = () => {
+    try {
+      win.focus();
+      win.print();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[printTicket] print failed:', e);
+    }
+    // No cerramos la ventana: el usuario decide (algunos drivers de
+    // impresora térmica limpian el spool al cerrar la app que imprime).
+  };
+
+  if (win.document.readyState === 'complete') {
+    setTimeout(triggerPrint, 100);
+  } else {
+    win.addEventListener('load', () => {
+      setTimeout(triggerPrint, 100);
+    });
+  }
+}
+
+/**
+ * Renderiza el HTML del ticket a un string (sin React). Se usa en la
+ * versión imprimible — no en el preview, que usa JSX directo.
+ *
+ * Mantener sincronizado con `TicketPreview` (mismas reglas de formato).
+ */
+function renderTicketHTML({
+  order,
+  customer,
+  payments,
+  tenantName,
+}: {
+  order: import('@lavanderpro/shared-types').Order;
+  customer: CustomerSnapshot;
+  payments: TicketPaymentLine[];
+  tenantName: string;
+}): string {
+  const escape = (s: string) =>
+    s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  const orderCode =
+    order.code === 'PENDING'
+      ? `PEDIDO #${order.id.slice(0, 6).toUpperCase()}`
+      : `PEDIDO ${order.code}`;
+
+  const itemsRows = order.items
+    .map(
+      (it) => `
+    <tr>
+      <td class="text-left align-top" style="padding-right:4px">
+        ${escape(it.serviceName)}
+        <div style="font-size:9px;opacity:.7">
+          $${formatMoney(it.unitPrice)} / ${escape(it.unit)}
+        </div>
+      </td>
+      <td class="text-center align-top" style="width:32px">${it.quantity}</td>
+      <td class="text-right align-top num" style="width:56px">
+        $${formatMoney(it.subtotal)}
+      </td>
+    </tr>`,
+    )
+    .join('');
+
+  const paymentsRows = payments
+    .map((p) => {
+      const cashDetail =
+        p.method === 'cash' &&
+        typeof p.received === 'number' &&
+        p.received !== p.amount
+          ? `<div style="display:flex;justify-content:space-between;padding-left:8px;font-size:9px;opacity:.8">
+            <span>  Recibido: $${formatMoney(p.received)}</span>
+            ${
+              p.change && p.change > 0
+                ? `<span>Cambio: <strong>$${formatMoney(p.change)}</strong></span>`
+                : ''
+            }
+          </div>`
+          : '';
+      const refLine = p.reference
+        ? `<div style="padding-left:8px;font-size:9px;opacity:.8">
+            Ref: ${escape(p.reference)}
+          </div>`
+        : '';
+      return `
+        <div>
+          <div style="display:flex;justify-content:space-between">
+            <span>• ${escape(paymentMethodLabel(p.method))}</span>
+            <span class="num">$${formatMoney(p.amount)}</span>
+          </div>
+          ${cashDetail}
+          ${refLine}
+        </div>`;
+    })
+    .join('');
+
+  return `<div class="ticket-receipt">
+  <div style="text-align:center;font-weight:700;font-size:14px;margin-bottom:2px">
+    ${escape(tenantName.toUpperCase())}
+  </div>
+  <div style="text-align:center;font-size:10px;margin-bottom:2px">
+    ${formatDateTime(order.createdAt)}
+  </div>
+  <div style="text-align:center;font-weight:700;margin-bottom:2px">
+    ${escape(orderCode)}
+  </div>
+
+  <div class="border-dashed" style="margin:2px 0"></div>
+  <div style="font-size:10px">
+    <div><strong>Cliente:</strong> ${escape(customer.name)}</div>
+    ${customer.phone ? `<div><strong>Tel:</strong> ${escape(customer.phone)}</div>` : ''}
+  </div>
+
+  <div class="border-dashed" style="margin:2px 0"></div>
+  <table>
+    <thead>
+      <tr style="text-align:left">
+        <th style="font-weight:600">Servicio</th>
+        <th class="text-center" style="font-weight:600;width:32px">Cant</th>
+        <th class="text-right" style="font-weight:600;width:56px">Total</th>
+      </tr>
+    </thead>
+    <tbody>${itemsRows}</tbody>
+  </table>
+
+  <div class="border-dashed" style="margin:2px 0"></div>
+  <div style="display:flex;justify-content:space-between;font-weight:700;font-size:13px">
+    <span>TOTAL</span>
+    <span class="num">$${formatMoney(order.total)}</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:10px">
+    <span>Cobrado</span>
+    <span class="num">$${formatMoney(order.paid)}</span>
+  </div>
+  ${
+    order.balance > 0
+      ? `<div style="display:flex;justify-content:space-between;font-size:10px">
+        <span>Pendiente</span>
+        <span class="num">$${formatMoney(order.balance)}</span>
+      </div>`
+      : ''
+  }
+
+  ${
+    payments.length > 0
+      ? `<div class="border-dashed" style="margin:2px 0"></div>
+    <div style="font-size:10px">
+      <div style="font-weight:600;margin-bottom:1px">Pagos:</div>
+      ${paymentsRows}
+    </div>`
+      : ''
+  }
+
+  ${
+    order.notes
+      ? `<div class="border-dashed" style="margin:2px 0"></div>
+    <div style="font-size:10px">
+      <strong>Notas:</strong> ${escape(order.notes)}
+    </div>`
+      : ''
+  }
+
+  <div class="border-dashed" style="margin:2px 0"></div>
+  <div style="text-align:center;font-size:10px">¡Gracias por su compra!</div>
+  <div style="text-align:center;font-size:9px;opacity:.7">
+    Conserve este ticket para retirar su pedido.
+  </div>
+</div>`;
 }

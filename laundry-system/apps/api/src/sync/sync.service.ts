@@ -12,11 +12,12 @@ import { OrderItemOrmEntity } from '../orders/infrastructure/order-item.orm-enti
 import { UserOrmEntity } from '../auth/infrastructure/user.orm-entity';
 import { ServiceCategoryOrmEntity } from '../services/infrastructure/entities/service-category.orm-entity';
 import { CustomerOrmEntity } from '../database/entities/customer.orm-entity';
+import { PaymentOrmEntity } from '../payments/infrastructure/payment.orm-entity';
 import {
   CUSTOMER_REPOSITORY,
   type CustomerRepositoryPort,
 } from '../customers/ports/customer-repository.port';
-import { Order } from '../orders/domain/order.entity';
+import type { Order, OrderItem } from '../orders/domain/order.entity';
 
 /**
  * SyncService — endpoints para sincronización offline-first.
@@ -24,7 +25,7 @@ import { Order } from '../orders/domain/order.entity';
  * GET /api/sync/changes?since=... → lista de cambios del tenant
  * POST /api/sync/batch → aplica operaciones del cliente (con LWW)
  *
- * Soporta: orders, service_categories, services, customers.
+ * Soporta: orders (create/update), service_categories, customers, payments.
  */
 @Injectable()
 export class SyncService {
@@ -41,18 +42,23 @@ export class SyncService {
     private readonly categoryRepo: Repository<ServiceCategoryOrmEntity>,
     @InjectRepository(CustomerOrmEntity)
     private readonly customerEntityRepo: Repository<CustomerOrmEntity>,
+    @InjectRepository(PaymentOrmEntity)
+    private readonly paymentRepo: Repository<PaymentOrmEntity>,
     @Inject(CUSTOMER_REPOSITORY)
     private readonly customerRepo: CustomerRepositoryPort,
   ) {}
 
   /**
    * Devuelve todos los cambios del tenant con `updatedAt > since`.
-   * Incluye orders + service_categories.
+   * Incluye orders + categories + payments.
    */
-  async getChanges(tenantId: string, since: number): Promise<SyncPullResponse> {
+  async getChanges(
+    tenantId: string,
+    since: number,
+  ): Promise<SyncPullResponse> {
     const sinceDate = since > 0 ? new Date(since) : undefined;
 
-    const [orders, categories] = await Promise.all([
+    const [orders, categories, payments] = await Promise.all([
       this.orderRepo.find({
         where: sinceDate
           ? { tenantId, updatedAt: MoreThan(sinceDate) }
@@ -62,6 +68,13 @@ export class SyncService {
         take: 500,
       }),
       this.categoryRepo.find({
+        where: sinceDate
+          ? { tenantId, updatedAt: MoreThan(sinceDate) }
+          : { tenantId },
+        order: { updatedAt: 'ASC' },
+        take: 500,
+      }),
+      this.paymentRepo.find({
         where: sinceDate
           ? { tenantId, updatedAt: MoreThan(sinceDate) }
           : { tenantId },
@@ -87,6 +100,14 @@ export class SyncService {
         updatedAt: c.updatedAt.getTime(),
         tombstone: !!c.deletedAt,
       })),
+      ...payments.map((p) => ({
+        entity: 'payment' as const,
+        entityId: p.id,
+        op: 'create' as const,
+        payload: this.paymentToDomain(p),
+        updatedAt: p.updatedAt.getTime(),
+        tombstone: false,
+      })),
     ];
 
     return {
@@ -97,8 +118,8 @@ export class SyncService {
 
   /**
    * Aplica un batch de operaciones con LWW.
-   * Soporta: orders (update), customers (create/update/delete),
-   * service_categories (create/update/delete), services (create/update/delete).
+   * Soporta: orders (create/update), customers (create/update/delete),
+   * service_categories (create/update/delete), payments (create).
    */
   async pushBatch(
     tenantId: string,
@@ -109,8 +130,8 @@ export class SyncService {
 
     for (const op of operations) {
       try {
-        if (op.entity === 'order' && op.op === 'update') {
-          await this.applyOrderUpdate(tenantId, op);
+        if (op.entity === 'order') {
+          await this.applyOrderOp(tenantId, op);
           accepted++;
         } else if (op.entity === 'service_category') {
           await this.applyCategoryOp(tenantId, op);
@@ -118,12 +139,18 @@ export class SyncService {
         } else if (op.entity === 'customer') {
           await this.applyCustomerOp(tenantId, op);
           accepted++;
+        } else if (op.entity === 'payment') {
+          await this.applyPaymentOp(tenantId, op);
+          accepted++;
         } else {
           this.logger.warn(`Sync op not supported: ${op.entity}/${op.op}`);
           rejected++;
         }
       } catch (e) {
-        this.logger.error(`Sync op failed: ${op.entity}/${op.op}/${op.entityId}`, e);
+        this.logger.error(
+          `Sync op failed: ${op.entity}/${op.op}/${op.entityId}`,
+          e,
+        );
         rejected++;
       }
     }
@@ -131,20 +158,221 @@ export class SyncService {
     return { accepted, rejected };
   }
 
-  /**
-   * Aplica una op de customer (create/update/delete). Mismo patrón que
-   * service_category: LWW con tie-break al server (no pisa si el local
-   * del cliente es más viejo).
-   */
-  private async applyCustomerOp(tenantId: string, op: SyncOperation): Promise<void> {
-    const payload = op.payload as Partial<{ name: string; updatedAt: number; [k: string]: unknown }>;
+  /* -----------------------------------------------------------------------
+   * Orders — create + update (con items)
+   * ----------------------------------------------------------------------- */
+
+  private async applyOrderOp(
+    tenantId: string,
+    op: SyncOperation,
+  ): Promise<void> {
+    const payload = op.payload as Partial<Order> & {
+      items?: OrderItem[];
+    };
+    const existing = await this.orderRepo.findOne({
+      where: { id: op.entityId, tenantId },
+      relations: { items: true },
+    });
+
+    if (!existing) {
+      // Crear order que el server no conoce (offline-first).
+      await this.createOrderFromSync(tenantId, op.entityId, payload);
+      return;
+    }
+
+    // Update con LWW: solo pisa si el local del cliente es más nuevo.
+    if (payload.updatedAt && payload.updatedAt <= existing.updatedAt.getTime()) {
+      return;
+    }
+
+    if (payload.status !== undefined)
+      existing.status = payload.status;
+    if (payload.total !== undefined)
+      existing.total = String(payload.total);
+    if (payload.paid !== undefined)
+      existing.paid = String(payload.paid);
+    if (payload.balance !== undefined)
+      existing.balance = String(payload.balance);
+    if (payload.customerName !== undefined)
+      existing.customerName = payload.customerName;
+    if (payload.notes !== undefined)
+      existing.notes = payload.notes;
+    if (payload.deliveredAt !== undefined)
+      existing.deliveredAt = new Date(payload.deliveredAt);
+    if (payload.estimatedDeliveryAt !== undefined)
+      existing.estimatedDeliveryAt = new Date(payload.estimatedDeliveryAt);
+
+    // Items: si el cliente envía items, reconstruir.
+    if (payload.items?.length) {
+      await this.orderItemRepo.delete({ orderId: op.entityId });
+      existing.items = payload.items.map((it) =>
+        this.orderItemRepo.create({
+          orderId: op.entityId,
+          serviceId: it.serviceId,
+          serviceName: it.serviceName,
+          unit: it.unit,
+          quantity: typeof it.quantity === 'number' ? it.quantity.toFixed(3) : String(it.quantity),
+          unitPrice: typeof it.unitPrice === 'number' ? it.unitPrice.toFixed(2) : String(it.unitPrice),
+          subtotal: typeof it.subtotal === 'number' ? it.subtotal.toFixed(2) : String(it.subtotal),
+          notes: it.notes,
+        }),
+      );
+    }
+
+    await this.orderRepo.save(existing);
+  }
+
+  private async createOrderFromSync(
+    tenantId: string,
+    id: string,
+    payload: Partial<Order> & { items?: OrderItem[] },
+  ): Promise<void> {
+    const code = await this.nextOrderCode(tenantId);
+    const row = this.orderRepo.create({
+      id,
+      tenantId,
+      code,
+      customerId: payload.customerId ?? '',
+      customerName: payload.customerName ?? 'Cliente',
+      status: payload.status ?? 'received',
+      total: String(payload.total ?? 0),
+      paid: String(payload.paid ?? 0),
+      balance: String(payload.balance ?? 0),
+      estimatedDeliveryAt: payload.estimatedDeliveryAt
+        ? new Date(payload.estimatedDeliveryAt)
+        : undefined,
+      deliveredAt: payload.deliveredAt
+        ? new Date(payload.deliveredAt)
+        : undefined,
+      notes: payload.notes,
+    });
+
+    const saved = await this.orderRepo.save(row);
+
+    if (payload.items?.length) {
+      const itemRows = payload.items.map((it) =>
+        this.orderItemRepo.create({
+          orderId: saved.id,
+          serviceId: it.serviceId,
+          serviceName: it.serviceName,
+          unit: it.unit,
+          quantity: typeof it.quantity === 'number' ? it.quantity.toFixed(3) : String(it.quantity),
+          unitPrice: typeof it.unitPrice === 'number' ? it.unitPrice.toFixed(2) : String(it.unitPrice),
+          subtotal: typeof it.subtotal === 'number' ? it.subtotal.toFixed(2) : String(it.subtotal),
+          notes: it.notes,
+        }),
+      );
+      await this.orderItemRepo.save(itemRows);
+    }
+  }
+
+  /* -----------------------------------------------------------------------
+   * Payments
+   * ----------------------------------------------------------------------- */
+
+  private async applyPaymentOp(
+    tenantId: string,
+    op: SyncOperation,
+  ): Promise<void> {
+    if (op.op !== 'create') {
+      this.logger.warn(
+        `Sync op payment solo permite 'create', recibido: ${op.op}`,
+      );
+      return;
+    }
+
+    const payload = op.payload as Partial<{
+      orderId: string;
+      method: string;
+      amount: number;
+      reference?: string;
+      updatedAt: number;
+    }>;
+
+    const orderId = payload.orderId;
+    if (!orderId) {
+      this.logger.warn(`Sync payment sin orderId: ${op.entityId}. Skip.`);
+      return;
+    }
+
+    const existing = await this.paymentRepo.findOne({
+      where: { id: op.entityId, tenantId },
+    });
+    if (existing) return; // idempotente — ya existe
+
+    const existingOrder = await this.orderRepo.findOne({
+      where: { id: orderId, tenantId },
+    });
+    if (!existingOrder) {
+      this.logger.warn(
+        `Sync payment con order ${orderId} inexistente. Skip.`,
+      );
+      return;
+    }
+
+    const row = this.paymentRepo.create({
+      id: op.entityId,
+      tenantId,
+      orderId,
+      method: (payload.method as PaymentOrmEntity['method']) ?? 'other',
+      amount: (payload.amount ?? 0).toFixed(2),
+      reference: payload.reference,
+    });
+    await this.paymentRepo.save(row);
+
+    // Recalcular paid/balance del order.
+    try {
+      await this.recalcOrderTotals(tenantId, orderId);
+    } catch (e) {
+      this.logger.error(
+        `[sync] Error al recalcular totals del order ${orderId}: ${e}`,
+      );
+    }
+  }
+
+  private async recalcOrderTotals(
+    tenantId: string,
+    orderId: string,
+  ): Promise<void> {
+    const order = await this.orderRepo.findOne({
+      where: { id: orderId, tenantId },
+    });
+    if (!order) return;
+
+    const sumResult = await this.paymentRepo
+      .createQueryBuilder('p')
+      .select('COALESCE(SUM(p.amount), 0)', 'total')
+      .where('p.tenant_id = :tenantId', { tenantId })
+      .andWhere('p.order_id = :orderId', { orderId })
+      .getRawOne<{ total: string }>();
+
+    const totalPaid = Number(sumResult?.total ?? 0);
+    order.paid = totalPaid.toFixed(2);
+    order.balance = Math.max(0, Number(order.total) - totalPaid).toFixed(2);
+    await this.orderRepo.save(order);
+  }
+
+  /* -----------------------------------------------------------------------
+   * Customer
+   * ----------------------------------------------------------------------- */
+
+  private async applyCustomerOp(
+    tenantId: string,
+    op: SyncOperation,
+  ): Promise<void> {
+    const payload = op.payload as Partial<{
+      name: string;
+      updatedAt: number;
+      [k: string]: unknown;
+    }>;
 
     if (op.op === 'delete') {
       const existing = await this.customerEntityRepo.findOne({
         where: { id: op.entityId, tenantId },
       });
       if (!existing) return;
-      if (payload.updatedAt && existing.updatedAt.getTime() > payload.updatedAt) return;
+      if (payload.updatedAt && existing.updatedAt.getTime() > payload.updatedAt)
+        return;
       await this.customerRepo.softDelete(op.entityId, tenantId);
       return;
     }
@@ -159,8 +387,6 @@ export class SyncService {
     });
 
     if (!existing) {
-      // Crear — validamos unique (name, tenant) activo para evitar
-      // colisiones con clientes que ya existen en el server.
       const conflict = await this.customerEntityRepo.findOne({
         where: { tenantId, name: incomingName },
       });
@@ -170,10 +396,6 @@ export class SyncService {
         );
         return;
       }
-      // Crear con el id del cliente (offline-first). Usamos el
-      // customerEntityRepo directamente (no el port) porque necesitamos
-      // preservar el id que ya viene del cliente. El port.create()
-      // autogeneraría uno nuevo.
       const newCustomer = this.customerEntityRepo.create({
         id: op.entityId,
         tenantId,
@@ -192,34 +414,45 @@ export class SyncService {
       return;
     }
 
-    // Update — LWW
-    if (payload.updatedAt && existing.updatedAt.getTime() > payload.updatedAt) {
-      return; // server más nuevo, skip
-    }
+    if (payload.updatedAt && existing.updatedAt.getTime() > payload.updatedAt)
+      return;
+
     existing.name = incomingName;
-    if (payload.phone !== undefined) existing.phone = (payload.phone as string | null) ?? null;
-    if (payload.email !== undefined) existing.email = (payload.email as string | null) ?? null;
-    if (payload.address !== undefined) existing.address = (payload.address as string | null) ?? null;
-    if (payload.notes !== undefined) existing.notes = (payload.notes as string | null) ?? null;
-    if (payload.rfc !== undefined) existing.rfc = (payload.rfc as string | null) ?? null;
-    if (payload.legalName !== undefined) existing.legalName = (payload.legalName as string | null) ?? null;
+    if (payload.phone !== undefined)
+      existing.phone = (payload.phone as string | null) ?? null;
+    if (payload.email !== undefined)
+      existing.email = (payload.email as string | null) ?? null;
+    if (payload.address !== undefined)
+      existing.address = (payload.address as string | null) ?? null;
+    if (payload.notes !== undefined)
+      existing.notes = (payload.notes as string | null) ?? null;
+    if (payload.rfc !== undefined)
+      existing.rfc = (payload.rfc as string | null) ?? null;
+    if (payload.legalName !== undefined)
+      existing.legalName = (payload.legalName as string | null) ?? null;
     await this.customerEntityRepo.save(existing);
   }
 
-  /**
-   * Aplica una op de service_category (create/update/delete).
-   * LWW: gana el que tenga updatedAt más reciente (con tie-break al server).
-   */
-  private async applyCategoryOp(tenantId: string, op: SyncOperation): Promise<void> {
+  /* -----------------------------------------------------------------------
+   * Service Category
+   * ----------------------------------------------------------------------- */
+
+  private async applyCategoryOp(
+    tenantId: string,
+    op: SyncOperation,
+  ): Promise<void> {
     const payload = op.payload as Partial<ServiceCategory>;
     const existing = await this.categoryRepo.findOne({
       where: { id: op.entityId, tenantId },
     });
 
     if (op.op === 'delete') {
-      if (!existing) return; // ya borrado, idempotente
-      // LWW: solo borramos si el local del cliente es más nuevo
-      if (payload.updatedAt && existing.updatedAt.getTime() > payload.updatedAt) return;
+      if (!existing) return;
+      if (
+        payload.updatedAt &&
+        existing.updatedAt.getTime() > payload.updatedAt
+      )
+        return;
       await this.categoryRepo.update(
         { id: op.entityId, tenantId },
         { deletedAt: new Date() },
@@ -227,19 +460,16 @@ export class SyncService {
       return;
     }
 
-    // create / update
     const incomingName = payload.name;
     if (!incomingName || typeof incomingName !== 'string') {
       throw new Error(`Category ${op.entityId} sin name`);
     }
 
     if (!existing) {
-      // Crear — verifico unique (name, tenant) activo
       const conflict = await this.categoryRepo.findOne({
         where: { tenantId, name: incomingName },
       });
       if (conflict && !conflict.deletedAt && conflict.id !== op.entityId) {
-        // Otro cliente ya creó la misma. Mantengo el existente (server wins on conflict).
         this.logger.warn(
           `Category conflict on create: ${incomingName} ya existe (${conflict.id}). Skip.`,
         );
@@ -254,57 +484,17 @@ export class SyncService {
       return;
     }
 
-    // Update — LWW
-    if (payload.updatedAt && existing.updatedAt.getTime() > payload.updatedAt) {
-      // Server tiene versión más nueva. Skip.
+    if (payload.updatedAt && existing.updatedAt.getTime() > payload.updatedAt)
       return;
-    }
+
     existing.name = incomingName;
     existing.deletedAt = null;
     await this.categoryRepo.save(existing);
   }
 
-  private async applyOrderUpdate(tenantId: string, op: SyncOperation): Promise<void> {
-    const payload = op.payload as Partial<Order>;
-    const existing = await this.orderRepo.findOne({
-      where: { id: op.entityId, tenantId },
-      relations: { items: true },
-    });
-    if (!existing) {
-      // El cliente tenía una order que el server no conoce — la creamos
-      const code = await this.nextOrderCode(tenantId);
-      const newOrder = new OrderOrmEntity();
-      newOrder.id = op.entityId;
-      newOrder.tenantId = tenantId;
-      newOrder.code = code;
-      newOrder.customerId = payload.customerId ?? '';
-      newOrder.customerName = payload.customerName ?? 'Cliente';
-      newOrder.status = payload.status ?? 'received';
-      newOrder.total = String(payload.total ?? 0);
-      newOrder.paid = String(payload.paid ?? 0);
-      newOrder.balance = String(payload.balance ?? 0);
-      newOrder.estimatedDeliveryAt = payload.estimatedDeliveryAt
-        ? new Date(payload.estimatedDeliveryAt)
-        : undefined;
-      newOrder.notes = payload.notes;
-      await this.orderRepo.save(newOrder);
-      return;
-    }
-
-    // LWW: si el local del cliente es más nuevo, gana
-    if (payload.updatedAt && payload.updatedAt > existing.updatedAt.getTime()) {
-      existing.status = payload.status ?? existing.status;
-      existing.total = String(payload.total ?? existing.total);
-      existing.paid = String(payload.paid ?? existing.paid);
-      existing.balance = String(payload.balance ?? existing.balance);
-      existing.notes = payload.notes ?? existing.notes;
-      existing.customerName = payload.customerName ?? existing.customerName;
-      if (payload.deliveredAt) {
-        existing.deliveredAt = new Date(payload.deliveredAt);
-      }
-      await this.orderRepo.save(existing);
-    }
-  }
+  /* -----------------------------------------------------------------------
+   * Helpers
+   * ----------------------------------------------------------------------- */
 
   private async nextOrderCode(tenantId: string): Promise<string> {
     const count = await this.orderRepo.count({ where: { tenantId } });
@@ -322,7 +512,7 @@ export class SyncService {
       total: Number(o.total),
       paid: Number(o.paid),
       balance: Number(o.balance),
-      notes: o.notes,
+      notes: o.notes ?? undefined,
       items: (o.items ?? []).map((i: OrderItemOrmEntity) => ({
         id: i.id,
         orderId: i.orderId,
@@ -332,7 +522,7 @@ export class SyncService {
         quantity: Number(i.quantity),
         unitPrice: Number(i.unitPrice),
         subtotal: Number(i.subtotal),
-        notes: i.notes,
+        notes: i.notes ?? undefined,
       })),
       estimatedDeliveryAt: o.estimatedDeliveryAt?.getTime(),
       deliveredAt: o.deliveredAt?.getTime(),
@@ -349,6 +539,19 @@ export class SyncService {
       deletedAt: c.deletedAt ? c.deletedAt.getTime() : null,
       createdAt: c.createdAt.getTime(),
       updatedAt: c.updatedAt.getTime(),
+    };
+  }
+
+  private paymentToDomain(p: PaymentOrmEntity): Record<string, unknown> {
+    return {
+      id: p.id,
+      tenantId: p.tenantId,
+      orderId: p.orderId,
+      method: p.method,
+      amount: Number(p.amount),
+      reference: p.reference ?? undefined,
+      createdAt: p.createdAt.getTime(),
+      updatedAt: p.updatedAt.getTime(),
     };
   }
 }

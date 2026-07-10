@@ -9,11 +9,13 @@ import { OrderItemOrmEntity } from './orders/infrastructure/order-item.orm-entit
 import { CustomerOrmEntity } from './database/entities/customer.orm-entity';
 import { ServiceOrmEntity } from './services/infrastructure/entities/service.orm-entity';
 import { ServiceCategoryOrmEntity } from './services/infrastructure/entities/service-category.orm-entity';
+import { PaymentOrmEntity } from './payments/infrastructure/payment.orm-entity';
 import { AuthModule } from './auth/auth.module';
 import { CustomersModule } from './customers/customers.module';
 import { HealthModule } from './health/health.module';
 import { OrdersModule } from './orders/orders.module';
 import { ServicesModule } from './services/services.module';
+import { PaymentsModule } from './payments/payments.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { SyncModule } from './sync/sync.module';
 
@@ -41,6 +43,7 @@ import { SyncModule } from './sync/sync.module';
           CustomerOrmEntity,
           ServiceOrmEntity,
           ServiceCategoryOrmEntity,
+          PaymentOrmEntity,
         ],
         migrations: ['dist/database/migrations/*.js'],
         migrationsRun: true,
@@ -54,6 +57,7 @@ import { SyncModule } from './sync/sync.module';
     CustomersModule,
     OrdersModule,
     ServicesModule,
+    PaymentsModule,
     SyncModule,
     HealthModule,
   ],

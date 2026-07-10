@@ -6,9 +6,13 @@ import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { ORDER_REPOSITORY } from './ports/order-repository.port';
 import { TypeormOrderRepository } from './infrastructure/typeorm-order.repository';
+import { ServicesModule } from '../services/services.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([OrderOrmEntity, OrderItemOrmEntity])],
+  imports: [
+    TypeOrmModule.forFeature([OrderOrmEntity, OrderItemOrmEntity]),
+    ServicesModule,
+  ],
   controllers: [OrdersController],
   providers: [
     OrdersService,

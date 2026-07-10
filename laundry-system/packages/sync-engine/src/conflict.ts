@@ -5,9 +5,9 @@
  * modificado en local y en server entre dos syncs), gana el que tenga
  * `updatedAt` más reciente. En empate gana el server (decisión segura).
  */
-import type { Order, Customer, Service } from '@lavanderpro/shared-types';
+import type { Order, Customer, Payment, Service } from '@lavanderpro/shared-types';
 
-type Syncable = Order | Customer | Service;
+type Syncable = Order | Customer | Payment | Service;
 
 export function resolveConflict<T extends Syncable>(local: T, remote: T): T {
   if (remote.updatedAt > local.updatedAt) return remote;
