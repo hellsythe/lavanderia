@@ -86,7 +86,7 @@ export default function HomePage() {
               <CycleTimeCard />
             </div>
           </div>
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mt-5">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mt-3">
             <div className="xl:col-span-2">
               <RecentHistoryCard />
             </div>
@@ -160,7 +160,7 @@ function ActiveOrdersCard() {
   const [filter, setFilter] = useState<'all' | 'in_process' | 'ready' | 'received'>('all');
   const { data: orders = [], isLoading } = useOrders({
     status: filter === 'all' ? ['in_process', 'ready', 'received'] : [filter],
-    limit: 20,
+    limit: 8,
   });
   const total = orders.length;
 

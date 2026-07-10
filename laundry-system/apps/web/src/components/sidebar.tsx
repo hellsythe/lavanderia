@@ -16,6 +16,7 @@ import {
   Users,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { useAuth } from '~/stores/auth-store';
 
 interface NavItem {
   href: string;
@@ -45,8 +46,11 @@ const CONFIG: NavItem[] = [
 ];
 
 export function Sidebar() {
+  const user = useAuth((s) => s.user);
+  const logout = useAuth((s) => s.logout);
+
   return (
-    <aside className="sticky top-0 h-screen w-sidebar-w shrink-0 bg-surface border-r border-border z-30 overflow-y-auto">
+    <aside className="sticky top-0 h-screen w-sidebar-w shrink-0 bg-surface border-r border-border z-30 overflow-y-auto flex flex-col">
       <div className="px-4 py-3.5 border-b border-border">
         <Link href="/" className="flex items-center gap-2.5">
           <div className="h-7 w-7 rounded-icon bg-accent text-accent-fg flex items-center justify-center font-bold text-[12px]">
@@ -65,18 +69,23 @@ export function Sidebar() {
         <NavSection label="Configuración" items={CONFIG} />
       </nav>
 
-      <div className="mt-auto px-3 py-3 border-t border-border sticky bottom-0 bg-surface">
-        <div className="flex items-center gap-2 px-2 py-2 rounded-sm hover:bg-canvas cursor-pointer">
+      <div className="mt-auto px-3 py-3 border-t border-border bg-surface">
+        <div className="flex items-center gap-2 px-2 py-2 rounded-sm hover:bg-canvas">
           <div className="h-7 w-7 rounded-full bg-accent-soft text-accent flex items-center justify-center font-bold text-[12px]">
             <CircleUser className="h-4 w-4" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[13px] font-semibold text-fg truncate">Carlos Méndez</div>
-            <div className="text-meta text-muted truncate">carlos@lavanderia.mx</div>
+            <div className="text-[13px] font-semibold text-fg truncate">
+              {user?.name ?? 'Usuario'}
+            </div>
+            <div className="text-meta text-muted truncate">
+              {user?.email ?? ''}
+            </div>
           </div>
           <button
             type="button"
             aria-label="Cerrar sesión"
+            onClick={() => logout()}
             className="h-7 w-7 inline-flex items-center justify-center text-muted hover:text-fg rounded-icon transition-colors duration-ui"
           >
             <LogOut className="h-3.5 w-3.5" />
