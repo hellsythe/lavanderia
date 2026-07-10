@@ -59,6 +59,7 @@ export class TypeormTenantRepository implements TenantRepositoryPort {
         ? new Date(patch.onboardingCompletedAt)
         : null;
     }
+    if (patch.logoUrl !== undefined) fields.logoUrl = patch.logoUrl ?? null;
 
     await this.repo.update({ id }, fields);
     const updated = await this.repo.findOne({ where: { id } });
@@ -86,6 +87,7 @@ export class TypeormTenantRepository implements TenantRepositoryPort {
       onboardingCompletedAt: row.onboardingCompletedAt
         ? row.onboardingCompletedAt.getTime()
         : undefined,
+      logoUrl: row.logoUrl ?? undefined,
       createdAt: row.createdAt.getTime(),
       updatedAt: row.updatedAt.getTime(),
     };

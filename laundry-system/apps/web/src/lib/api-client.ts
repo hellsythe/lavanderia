@@ -393,6 +393,27 @@ export const tenantsApi = {
       method: 'PATCH',
       json: input,
     }),
+
+  /**
+   * PUT /tenants/:id — actualiza datos de la empresa desde configuración.
+   */
+  update: (id: string, input: import('@lavanderpro/shared-types').UpdateTenantInput) =>
+    apiRequest<Tenant>(`/tenants/${id}`, {
+      method: 'PUT',
+      json: input,
+    }),
+
+  /**
+   * POST /tenants/:id/logo/presign — genera URL prefirmada para subir el logo.
+   */
+  presignLogoUpload: (
+    id: string,
+    input: import('@lavanderpro/shared-types').PresignLogoUploadRequest,
+  ) =>
+    apiRequest<import('@lavanderpro/shared-types').PresignLogoUploadResponse>(
+      `/tenants/${id}/logo/presign`,
+      { method: 'POST', json: input },
+    ),
 };
 
 // Service Catalog helpers

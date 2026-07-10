@@ -13,6 +13,7 @@ export type {
   CategorySnapshot,
   OrderSnapshot,
   PaymentSnapshot,
+  PendingUpload,
   SyncQueueEntry,
   MetaEntry,
   LavanderProDB,
@@ -26,4 +27,5 @@ export { authSessionRepo, failedAttemptsRepo } from './repos/auth.repo';
 export { categoryRepo } from './repos/categories.repo';
 export { serviceRepo } from './repos/services.repo';
 export { paymentRepo } from './repos/payments.repo';
+export { pendingUploadRepo } from './repos/pending-uploads.repo';
 export { lwwMerge } from './lib/merge';

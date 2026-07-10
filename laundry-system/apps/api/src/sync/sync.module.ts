@@ -6,6 +6,7 @@ import { UserOrmEntity } from '../auth/infrastructure/user.orm-entity';
 import { ServiceCategoryOrmEntity } from '../services/infrastructure/entities/service-category.orm-entity';
 import { CustomerOrmEntity } from '../database/entities/customer.orm-entity';
 import { PaymentOrmEntity } from '../payments/infrastructure/payment.orm-entity';
+import { TenantOrmEntity } from '../tenants/infrastructure/tenant.orm-entity';
 import { CustomersModule } from '../customers/customers.module';
 import { SyncController } from './sync.controller';
 import { SyncService } from './sync.service';
@@ -19,6 +20,7 @@ import { SyncService } from './sync.service';
       ServiceCategoryOrmEntity,
       CustomerOrmEntity,
       PaymentOrmEntity,
+      TenantOrmEntity,
     ]),
     CustomersModule,
   ],

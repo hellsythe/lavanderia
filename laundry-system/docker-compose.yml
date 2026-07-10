@@ -60,6 +60,41 @@ services:
       postgres:
         condition: service_healthy
 
+  # Object Storage — MinIO (S3-compatible)
+  minio:
+    image: minio/minio:latest
+    container_name: lavanderpro-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - lavanderpro_miniodata:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Init MinIO bucket (one-shot)
+  minio-init:
+    image: minio/mc:latest
+    container_name: lavanderpro-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${S3_ACCESS_KEY:-minioadmin} ${S3_SECRET_KEY:-minioadmin};
+      mc mb -p local/lavanderpro-assets --ignore-existing;
+      mc anonymous set public local/lavanderpro-assets;
+      echo 'MinIO init done — bucket lavanderpro-assets created'
+      "
+
   # ────────────────────────────────────────────────────────
   # API (NestJS con hot-reload)
   # ────────────────────────────────────────────────────────
@@ -136,3 +171,5 @@ volumes:
     name: lavanderpro_pgdata
   lavanderpro_redisdata:
     name: lavanderpro_redisdata
+  lavanderpro_miniodata:
+    name: lavanderpro_miniodata

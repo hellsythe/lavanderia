@@ -160,6 +160,25 @@ export interface PaymentSnapshot {
 }
 
 /**
+ * PendingUpload — archivos pendientes de subir a MinIO/S3.
+ * El blob queda en IndexedDB hasta que el usuario esté online y el
+ * sync engine lo drene: presign → PUT → PATCH tenant.logoUrl.
+ */
+export interface PendingUpload {
+  id: string;
+  tenantId: string;
+  entity: 'tenant_logo';
+  entityId: string;
+  blob: Blob;
+  contentType: string;
+  filename: string;
+  createdAt: number;
+  attempts: number;
+  lastError?: string;
+  dirty: 0 | 1;
+}
+
+/**
  * Sync queue — operaciones pendientes de subir al server.
  * uuid es UUID v7 generado en cliente (ordenable por tiempo).
  * dirty = 1 si la row no se ha subido al server, 0 si ya se sincronizó.
@@ -167,7 +186,7 @@ export interface PaymentSnapshot {
  */
 export interface SyncQueueEntry {
   uuid: string;          // UUID v7 client-generated
-  entity: 'order' | 'customer' | 'service' | 'service_category' | 'payment';
+  entity: 'order' | 'customer' | 'service' | 'service_category' | 'payment' | 'tenant' | 'pending_upload';
   entityId: string;
   op: 'create' | 'update' | 'delete';
   payload: unknown;      // datos a enviar al server
@@ -200,13 +219,14 @@ export class LavanderProDB extends Dexie {
   services!: Table<ServiceSnapshot, string>;
   categories!: Table<CategorySnapshot, string>;
   payments!: Table<PaymentSnapshot, string>;
+  pendingUploads!: Table<PendingUpload, string>;
   syncQueue!: Table<SyncQueueEntry, string>;
   meta!: Table<MetaEntry, string>;
   authSession!: Table<AuthSessionSnapshot, string>;
 
   constructor() {
     super('lavanderpro');
-    this.version(4)
+    this.version(5)
       .stores({
         // Primary key + índices secundarios
         users: 'id',
@@ -219,6 +239,8 @@ export class LavanderProDB extends Dexie {
         categories: 'id, tenantId, name, updatedAt',
         // v4: tabla payments para sync offline-first de pagos
         payments: 'id, tenantId, orderId, method, updatedAt',
+        // v5: tabla pending_uploads para subir logos offline
+        pendingUploads: 'id, tenantId, entity, dirty',
         // 'dirty' para drain rápido de pending. 'entity' para filtros.
         syncQueue: 'uuid, entity, dirty, timestamp, [entity+entityId]',
         // 'key' es la primary key
@@ -230,6 +252,7 @@ export class LavanderProDB extends Dexie {
         // v1 → v2: solo se crea la nueva tabla authSession, no se migran datos.
         // v2 → v3: solo se crea la tabla categories, no se migran datos.
         // v3 → v4: solo se crea la tabla payments, no se migran datos.
+        // v4 → v5: solo se crea la tabla pendingUploads, no se migran datos.
       });
   }
 }

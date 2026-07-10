@@ -21,6 +21,7 @@ import {
   metaRepo,
   orderRepo,
   paymentRepo,
+  pendingUploadRepo,
   serviceRepo,
   syncQueueRepo,
   type ServiceSnapshot,
@@ -54,6 +55,7 @@ interface SyncStore {
   fullSync: () => Promise<void>;
   initialSync: () => Promise<void>;
   recomputePending: () => Promise<void>;
+  drainPendingUploads: () => Promise<void>;
 }
 
 const AUTO_SYNC_DEBOUNCE_MS = 2_000;
@@ -251,10 +253,62 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
       // Skip — we know we're offline. Caller's mutations are in queue.
       return;
     }
-    // Push first, then pull. Order matters: ensures our changes go up first.
+    // Drain pending uploads first, then push data, then pull.
+    await get().drainPendingUploads();
     await get().push();
     await get().pull();
     set({ lastSyncAt: Date.now() });
+  },
+
+  /**
+   * Drena los archivos pendientes de subir (logos offline).
+   * Para cada PendingUpload: presign → PUT → PATCH tenant.logoUrl.
+   */
+  drainPendingUploads: async () => {
+    if (typeof window === 'undefined') return;
+
+    const pending = await pendingUploadRepo.listAll();
+    if (pending.length === 0) return;
+
+    for (const entry of pending) {
+      try {
+        const ext = entry.filename.split('.').pop() ?? 'png';
+        const presignRes = await apiRequest<{
+          uploadUrl: string;
+          key: string;
+          publicUrl: string;
+          expiresAt: number;
+        }>(`/tenants/${entry.tenantId}/logo/presign`, {
+          method: 'POST',
+          body: JSON.stringify({
+            contentType: entry.contentType,
+            filename: `${entry.id}.${ext}`,
+          }),
+        });
+
+        const putRes = await fetch(presignRes.uploadUrl, {
+          method: 'PUT',
+          body: entry.blob,
+          headers: { 'Content-Type': entry.contentType },
+        });
+
+        if (!putRes.ok) {
+          throw new Error(`PUT upload failed: ${putRes.status}`);
+        }
+
+        await apiRequest(`/tenants/${entry.tenantId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ logoUrl: presignRes.publicUrl }),
+        });
+
+        await pendingUploadRepo.markDone(entry.id);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Upload failed';
+        await pendingUploadRepo.markFailed(entry.id, msg);
+        // eslint-disable-next-line no-console
+        console.warn(`[sync] upload failed for ${entry.id}: ${msg}`);
+      }
+    }
   },
 
   /**

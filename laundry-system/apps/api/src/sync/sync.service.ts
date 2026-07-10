@@ -13,6 +13,7 @@ import { UserOrmEntity } from '../auth/infrastructure/user.orm-entity';
 import { ServiceCategoryOrmEntity } from '../services/infrastructure/entities/service-category.orm-entity';
 import { CustomerOrmEntity } from '../database/entities/customer.orm-entity';
 import { PaymentOrmEntity } from '../payments/infrastructure/payment.orm-entity';
+import { TenantOrmEntity } from '../tenants/infrastructure/tenant.orm-entity';
 import {
   CUSTOMER_REPOSITORY,
   type CustomerRepositoryPort,
@@ -44,6 +45,8 @@ export class SyncService {
     private readonly customerEntityRepo: Repository<CustomerOrmEntity>,
     @InjectRepository(PaymentOrmEntity)
     private readonly paymentRepo: Repository<PaymentOrmEntity>,
+    @InjectRepository(TenantOrmEntity)
+    private readonly tenantRepo: Repository<TenantOrmEntity>,
     @Inject(CUSTOMER_REPOSITORY)
     private readonly customerRepo: CustomerRepositoryPort,
   ) {}
@@ -141,6 +144,9 @@ export class SyncService {
           accepted++;
         } else if (op.entity === 'payment') {
           await this.applyPaymentOp(tenantId, op);
+          accepted++;
+        } else if (op.entity === 'tenant') {
+          await this.applyTenantOp(tenantId, op);
           accepted++;
         } else {
           this.logger.warn(`Sync op not supported: ${op.entity}/${op.op}`);
@@ -553,5 +559,72 @@ export class SyncService {
       createdAt: p.createdAt.getTime(),
       updatedAt: p.updatedAt.getTime(),
     };
+  }
+
+  /* -----------------------------------------------------------------------
+   * Tenant — update de campos configurables (logoUrl, datos empresa)
+   * ----------------------------------------------------------------------- */
+
+  private async applyTenantOp(
+    tenantId: string,
+    op: SyncOperation,
+  ): Promise<void> {
+    if (op.op !== 'update') {
+      this.logger.warn(
+        `Sync op tenant solo permite 'update', recibido: ${op.op}`,
+      );
+      return;
+    }
+
+    const payload = op.payload as Partial<{
+      name: string;
+      fiscalName: string | null;
+      fiscalAddress: string | null;
+      fiscalTaxId: string | null;
+      branchName: string | null;
+      branchAddress: string | null;
+      branchPhone: string | null;
+      whatsappPhone: string | null;
+      logoUrl: string | null;
+      updatedAt: number;
+    }>;
+
+    const existing = await this.tenantRepo.findOne({
+      where: { id: op.entityId },
+    });
+    if (!existing || existing.id !== tenantId) {
+      this.logger.warn(
+        `Sync tenant ${op.entityId} no encontrado o no pertenece a ${tenantId}`,
+      );
+      return;
+    }
+
+    // LWW: solo pisa si el local es más nuevo.
+    if (
+      payload.updatedAt &&
+      existing.updatedAt.getTime() >= payload.updatedAt
+    ) {
+      return;
+    }
+
+    if (payload.name !== undefined) existing.name = payload.name;
+    if (payload.fiscalName !== undefined)
+      existing.fiscalName = payload.fiscalName;
+    if (payload.fiscalAddress !== undefined)
+      existing.fiscalAddress = payload.fiscalAddress;
+    if (payload.fiscalTaxId !== undefined)
+      existing.fiscalTaxId = payload.fiscalTaxId;
+    if (payload.branchName !== undefined)
+      existing.branchName = payload.branchName;
+    if (payload.branchAddress !== undefined)
+      existing.branchAddress = payload.branchAddress;
+    if (payload.branchPhone !== undefined)
+      existing.branchPhone = payload.branchPhone;
+    if (payload.whatsappPhone !== undefined)
+      existing.whatsappPhone = payload.whatsappPhone;
+    if (payload.logoUrl !== undefined)
+      existing.logoUrl = payload.logoUrl;
+
+    await this.tenantRepo.save(existing);
   }
 }

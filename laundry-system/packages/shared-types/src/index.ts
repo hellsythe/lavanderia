@@ -26,6 +26,8 @@ export const TenantSchema = z.object({
     .max(40)
     .regex(/^[a-z0-9-]+$/),
   plan: TenantPlanSchema,
+  // Logo — subido desde el módulo de configuración
+  logoUrl: z.string().max(500).optional(),
   // Datos fiscales — paso 1 del onboarding
   fiscalName: z.string().min(2).max(120).optional(),
   fiscalAddress: z.string().min(5).max(200).optional(),
@@ -44,6 +46,20 @@ export const TenantSchema = z.object({
   updatedAt: TimestampSchema,
 });
 export type Tenant = z.infer<typeof TenantSchema>;
+
+/** Campos que se pueden editar desde el módulo de configuración. */
+export const UpdateTenantInputSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  fiscalName: z.string().min(2).max(120).optional(),
+  fiscalAddress: z.string().min(5).max(200).optional(),
+  fiscalTaxId: z.string().min(8).max(20).optional(),
+  branchName: z.string().min(2).max(120).optional(),
+  branchAddress: z.string().min(5).max(200).optional(),
+  branchPhone: z.string().min(8).max(30).optional(),
+  whatsappPhone: z.string().min(10).max(15).optional(),
+  logoUrl: z.string().max(500).optional(),
+});
+export type UpdateTenantInput = z.infer<typeof UpdateTenantInputSchema>;
 
 /* =========================================================================
  * User
@@ -454,6 +470,8 @@ export const SyncEntityTypeSchema = z.enum([
   'service_category',
   'order',
   'payment',
+  'tenant',
+  'pending_upload',
 ]);
 export type SyncEntityType = z.infer<typeof SyncEntityTypeSchema>;
 
@@ -532,3 +550,31 @@ export const CreateOrderInputSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 export type CreateOrderInput = z.infer<typeof CreateOrderInputSchema>;
+
+/* =========================================================================
+ * Storage / Presigned Uploads (MinIO)
+ * ========================================================================= */
+
+export const ALLOWED_LOGO_MIME_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/svg+xml',
+] as const;
+
+export const PresignLogoUploadRequestSchema = z.object({
+  contentType: z.enum(ALLOWED_LOGO_MIME_TYPES),
+  filename: z.string().min(1).max(120),
+});
+export type PresignLogoUploadRequest = z.infer<
+  typeof PresignLogoUploadRequestSchema
+>;
+
+export const PresignLogoUploadResponseSchema = z.object({
+  uploadUrl: z.string().url(),
+  key: z.string().min(1),
+  publicUrl: z.string().url(),
+  expiresAt: TimestampSchema,
+});
+export type PresignLogoUploadResponse = z.infer<
+  typeof PresignLogoUploadResponseSchema
+>;

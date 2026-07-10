@@ -18,6 +18,7 @@ import { ServicesModule } from './services/services.module';
 import { PaymentsModule } from './payments/payments.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { SyncModule } from './sync/sync.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { SyncModule } from './sync/sync.module';
     ServicesModule,
     PaymentsModule,
     SyncModule,
+    StorageModule,
     HealthModule,
   ],
 })

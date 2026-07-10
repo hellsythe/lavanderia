@@ -35,11 +35,13 @@ type AuthTenant = {
   // `null` cuando aún no se completó ese paso.
   fiscalName?: string | null;
   fiscalAddress?: string | null;
+  fiscalTaxId?: string | null;
   branchName?: string | null;
   branchAddress?: string | null;
   branchPhone?: string | null;
   whatsappPhone?: string | null;
   whatsappVerifiedAt?: number | null;
+  logoUrl?: string | null;
   onboardingStep?: number;
   onboardingCompletedAt?: number;
 };
@@ -69,6 +71,8 @@ interface AuthState {
    * El caller debe haber validado con Zod antes (usamos zodResolver en el form).
    */
   updateTenantOnboarding: (input: OnboardingStepInput) => Promise<Tenant>;
+  /** Actualiza datos del tenant (configuración general, logo, etc). */
+  updateTenant: (input: import('@lavanderpro/shared-types').UpdateTenantInput) => Promise<void>;
 }
 
 export const useAuth = create<AuthState>((set, get) => ({
@@ -296,6 +300,28 @@ export const useAuth = create<AuthState>((set, get) => ({
       },
     });
     return updated;
+  },
+
+  updateTenant: async (input) => {
+    const { tenant } = get();
+    if (!tenant) throw new Error('No hay tenant activo');
+    const updated = await tenantsApi.update(tenant.id, input);
+    set((s) => ({
+      tenant: s.tenant
+        ? {
+            ...s.tenant,
+            name: updated.name ?? s.tenant.name,
+            fiscalName: updated.fiscalName ?? s.tenant.fiscalName,
+            fiscalAddress: updated.fiscalAddress ?? s.tenant.fiscalAddress,
+            fiscalTaxId: updated.fiscalTaxId ?? s.tenant.fiscalTaxId,
+            branchName: updated.branchName ?? s.tenant.branchName,
+            branchAddress: updated.branchAddress ?? s.tenant.branchAddress,
+            branchPhone: updated.branchPhone ?? s.tenant.branchPhone,
+            whatsappPhone: updated.whatsappPhone ?? s.tenant.whatsappPhone,
+            logoUrl: updated.logoUrl ?? s.tenant.logoUrl,
+          }
+        : null,
+    }));
   },
 }));
 

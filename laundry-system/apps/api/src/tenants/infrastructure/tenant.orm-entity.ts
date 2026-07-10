@@ -60,6 +60,10 @@ export class TenantOrmEntity {
   @Column({ type: 'timestamptz', nullable: true })
   onboardingCompletedAt!: Date | null;
 
+  // ── Logo ───────────────────────────────────────────────────────────────
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  logoUrl!: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
