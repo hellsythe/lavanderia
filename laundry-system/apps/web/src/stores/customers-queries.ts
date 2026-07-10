@@ -93,10 +93,16 @@ export function useCreateCustomer(tenantId: string) {
         timestamp: Date.now(),
       });
 
-      // 3. Best-effort API
+      // 3. Best-effort API con el MISMO id (offline-first). Si el server
+      // confirma, mergeFromServer hace upsert → la local y la del server
+      // son la misma row. Sin duplicación.
       if (useNetworkStore.getState().state !== 'offline') {
         try {
-          await customersApi.create(input);
+          const serverRow = await customersApi.create({
+            ...input,
+            id: local.id,
+          });
+          await customerRepo.mergeFromServer(tenantId, [serverRow]);
         } catch (e) {
           console.warn('[useCreateCustomer] api call failed, will sync later:', e);
         }

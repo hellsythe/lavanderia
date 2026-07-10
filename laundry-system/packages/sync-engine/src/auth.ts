@@ -3,14 +3,14 @@
  *
  * El sync-engine necesita la JWT para hablar con el backend y la URL
  * absoluta del API. Como ambos viven en apps/web y se inicializan
- * con la misma sesión, exponemos un cache de token + base URL aquí.
+ * con la misma sesión, exponemos lectura de token + base URL aquí.
  *
  * `api-client.ts` es quien escribe el token (tras login/unlock).
  * `sync-engine.ts` es quien lo lee (en cada request).
  *
- * El token se lee de sessionStorage en cada getAccessToken(), lo que
- * garantiza que sobrevive a HMR / Fast Refresh de Next.js (que
- * re-evalúa módulos y resetea vars top-level).
+ * Leemos SIEMPRE de sessionStorage (sin cache de memoria) para evitar
+ * stale state en dev con HMR, donde el módulo puede re-evaluarse y el
+ * cache de memoria queda desincronizado con sessionStorage.
  *
  * La API base se resuelve desde `process.env.NEXT_PUBLIC_API_URL`
  * (Next.js la inlinea en el bundle del browser al build) con fallback
@@ -45,17 +45,21 @@ export const API_BASE: string =
   (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) ||
   'http://localhost:4000/api';
 
-// Cache en memoria — espeja sessionStorage. Se rehidrata en cada lectura.
-let _accessToken: string | null = null;
-
-export function setAccessToken(token: string | null): void {
-  _accessToken = token;
+/**
+ * Lee SIEMPRE de sessionStorage (sin cache). Garantiza freshness tras
+ * HMR y tras setAccessToken en otro módulo — el sessionStorage es la
+ * única source of truth.
+ */
+export function getAccessToken(): string | null {
+  return readAccessToken();
 }
 
-export function getAccessToken(): string | null {
-  // Si el módulo fue re-evaluado (HMR), re-leer de sessionStorage.
-  if (!_accessToken) {
-    _accessToken = readAccessToken();
-  }
-  return _accessToken;
+/**
+ * @deprecated — se mantiene por compatibilidad. El cache de memoria
+ * se eliminó; leer de sessionStorage siempre. Las llamadas a esta
+ * función son no-op en términos de lectura pero se preservan para
+ * evitar errores de import.
+ */
+export function setAccessToken(_token: string | null): void {
+  // no-op
 }

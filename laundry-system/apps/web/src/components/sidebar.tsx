@@ -26,8 +26,8 @@ interface NavItem {
 
 const PRIMARY: NavItem[] = [
   { href: '/', label: 'Panel Principal', icon: <Home className="h-4 w-4" /> },
-  { href: '/pedidos', label: 'Pedidos', icon: <ClipboardList className="h-4 w-4" />, badge: 12 },
   { href: '/pos', label: 'Levantar pedido', icon: <Plus className="h-4 w-4" /> },
+  { href: '/pedidos', label: 'Pedidos', icon: <ClipboardList className="h-4 w-4" />, badge: 12 },
   { href: '/clientes', label: 'Clientes', icon: <Users className="h-4 w-4" /> },
   { href: '/servicios', label: 'Servicios', icon: <ListChecks className="h-4 w-4" /> },
   { href: '/categorias', label: 'Categorías', icon: <Box className="h-4 w-4" /> },

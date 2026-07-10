@@ -45,6 +45,7 @@ export class CustomersService {
       throw new ConflictException(`Ya existe un cliente activo con el nombre "${data.name}"`);
     }
     return this.customers.create({
+      id: data.id, // Respetamos id del cliente si lo envía (offline-first).
       tenantId,
       name: data.name,
       phone: data.phone,

@@ -132,27 +132,40 @@ export function PosContent() {
   }, [filteredServices, categoriesData]);
 
   // === Cart helpers ===
+  /**
+   * Setea la cantidad de un servicio en el cart. Si el cart NO tiene
+   * ese servicio y quantity > 0, lo agrega. Si quantity === 0, lo quita
+   * (o no hace nada si no estaba). Si lo tiene, actualiza la cantidad
+   * respetando `minQuantity` (no se puede bajar del mínimo).
+   */
   const updateQuantity = (serviceId: string, quantity: number) => {
     setCart((prev) => {
       const next = new Map(prev);
       const existing = next.get(serviceId);
-      if (!existing) {
-        // Si no estaba en el cart y la qty > 0, agregarlo. Si es 0, no hacer nada.
-        if (quantity <= 0) return prev;
+      const safeQty = Math.max(0, Math.floor(quantity));
+
+      // Caso 1: quitar (qty === 0).
+      if (safeQty === 0) {
+        if (existing) next.delete(serviceId);
         return next;
       }
-      const minQty = existing.service.minQuantity ?? 1;
-      const safeQty = Math.max(0, Math.floor(quantity));
-      if (safeQty < minQty) {
-        // Cantidad 0 → quitar del cart. minQty ≤ safeQty → dejar.
-        if (safeQty === 0) {
-          next.delete(serviceId);
-        } else {
-          next.set(serviceId, { ...existing, quantity: minQty });
-        }
-      } else {
-        next.set(serviceId, { ...existing, quantity: safeQty });
+
+      // Caso 2: agregar nuevo (no estaba en el cart).
+      if (!existing) {
+        // Buscar el service en servicesData para conocer su minQuantity.
+        const service = servicesData.find((s) => s.id === serviceId);
+        const minQty = service?.minQuantity ?? 1;
+        // Si safeQty está por debajo del min, lo subimos al min.
+        const finalQty = Math.max(safeQty, minQty);
+        if (!service) return prev; // no encontrado, nada que hacer
+        next.set(serviceId, { service, quantity: finalQty });
+        return next;
       }
+
+      // Caso 3: actualizar existente.
+      const minQty = existing.service.minQuantity ?? 1;
+      const finalQty = Math.max(safeQty, minQty);
+      next.set(serviceId, { ...existing, quantity: finalQty });
       return next;
     });
   };

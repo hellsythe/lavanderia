@@ -86,13 +86,17 @@ export class TypeormCustomerRepository implements CustomerRepositoryPort {
   }
 
   async create(
-    customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>,
+    customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'> &
+      Partial<Pick<Customer, 'id'>>,
   ): Promise<Customer> {
     const result = await this.repo.manager.query(
-      `INSERT INTO customers (tenant_id, name, phone, email, address, notes, rfc, legal_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      // Si el cliente envía id, lo respetamos (offline-first). Si no, el
+      // server genera uno (default uuid_generate_v4()).
+      `INSERT INTO customers (id, tenant_id, name, phone, email, address, notes, rfc, legal_name)
+       VALUES (COALESCE($1, uuid_generate_v4()), $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id, tenant_id, name, phone, email, address, notes, rfc, legal_name, deleted_at, created_at, updated_at`,
       [
+        customer.id ?? null,
         customer.tenantId,
         customer.name,
         customer.phone ?? null,

@@ -245,8 +245,26 @@ export async function apiRequest<T>(
 
   const body = json !== undefined ? JSON.stringify(json) : undefined;
 
+  // Si NO hay tokens (access + refresh), no tiene sentido pegar al API
+  // — guaranteed 401 + deja al usuario viendo la app "rota". Limpiamos
+  // sesión y mandamos a /login.
+  const access = getAccessToken();
+  const refresh = getRefreshToken();
+  if (!skipAuth && !access && !refresh) {
+    // eslint-disable-next-line no-console
+    console.warn(`[api] ${path} sin access token en cache — redirigiendo a login`);
+    await clearSession();
+    if (
+      typeof window !== 'undefined' &&
+      !window.location.pathname.startsWith('/login')
+    ) {
+      window.location.href = '/login';
+    }
+    throw new Error('No hay sesión activa. Redirigiendo a login…');
+  }
+
   // Primer intento
-  const token = getAccessToken();
+  const token = access;
   if (!skipAuth && !token) {
     // eslint-disable-next-line no-console
     console.warn(`[api] ${path} sin access token en cache`);
@@ -258,9 +276,10 @@ export async function apiRequest<T>(
   });
 
   // Auto-refresh en 401 (excepto si es /auth/*).
-  // Importante: si no hay tokens guardados, NO intentamos refresh.
+  // Si no hay tokens guardados, NO intentamos refresh — mandamos a login
+  // directamente (el access está muerto, sin refresh no hay forma de salvar).
   if (res.status === 401 && !skipAuth && !path.startsWith('/auth/')) {
-    const hasRefresh = !!getRefreshToken();
+    const hasRefresh = !!refresh;
     if (hasRefresh) {
       refreshing ??= refreshAccessToken().finally(() => {
         refreshing = null;
@@ -273,6 +292,7 @@ export async function apiRequest<T>(
           body,
         });
       } else {
+        // Refresh falló: limpiamos sesión y mandamos a login.
         await clearSession();
         if (
           typeof window !== 'undefined' &&
@@ -281,8 +301,16 @@ export async function apiRequest<T>(
           window.location.href = '/login';
         }
       }
+    } else {
+      // No hay refresh token: limpiamos y mandamos a login.
+      await clearSession();
+      if (
+        typeof window !== 'undefined' &&
+        !window.location.pathname.startsWith('/login')
+      ) {
+        window.location.href = '/login';
+      }
     }
-    // Si no hay refresh token, dejamos que el 401 propague.
   }
 
   if (!res.ok) throw await parseError(res);

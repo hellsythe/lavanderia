@@ -101,6 +101,8 @@ export type Customer = z.infer<typeof CustomerSchema>;
  */
 export const CreateCustomerInputSchema = z
   .object({
+    /** Si está presente, el server lo usa en vez de generar (offline-first). */
+    id: UuidSchema.optional(),
     name: z.string().min(1).max(120),
     phone: z
       .string()

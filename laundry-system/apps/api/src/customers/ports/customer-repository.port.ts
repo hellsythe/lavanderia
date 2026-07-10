@@ -20,7 +20,8 @@ export interface CustomerRepositoryPort {
   findByName(name: string, tenantId: string): Promise<Customer | null>;
   list(tenantId: string, filters: CustomerListFilters): Promise<ListCustomersResult>;
   create(
-    customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>,
+    customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'> &
+      Partial<Pick<Customer, 'id'>>,
   ): Promise<Customer>;
   update(customer: Customer): Promise<Customer>;
   softDelete(id: string, tenantId: string): Promise<void>;
