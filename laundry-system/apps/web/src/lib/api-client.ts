@@ -488,3 +488,16 @@ export const categoriesApi = {
       method: 'DELETE',
     }),
 };
+
+// Payments helpers
+// Best-effort: si el backend no tiene payments implementado todavía, la
+// creación local funciona igual (offline-first). El push al server puede
+// fallar silenciosamente y la op queda en sync_queue para reintento.
+import type { CreatePaymentInput, Payment } from '@lavanderpro/shared-types';
+
+export const paymentsApi = {
+  create: (input: CreatePaymentInput) =>
+    apiRequest<Payment>('/payments', { method: 'POST', json: input }),
+  listByOrder: (orderId: string) =>
+    apiRequest<Payment[]>(`/payments?orderId=${orderId}`),
+};

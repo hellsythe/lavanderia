@@ -12,6 +12,7 @@ export type {
   ServiceSnapshot,
   CategorySnapshot,
   OrderSnapshot,
+  PaymentSnapshot,
   SyncQueueEntry,
   MetaEntry,
   LavanderProDB,
@@ -24,4 +25,5 @@ export { syncQueueRepo } from './repos/sync-queue.repo';
 export { authSessionRepo, failedAttemptsRepo } from './repos/auth.repo';
 export { categoryRepo } from './repos/categories.repo';
 export { serviceRepo } from './repos/services.repo';
+export { paymentRepo } from './repos/payments.repo';
 export { lwwMerge } from './lib/merge';

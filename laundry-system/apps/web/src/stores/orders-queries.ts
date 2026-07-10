@@ -8,15 +8,42 @@ import {
   useSyncStore,
 } from '@lavanderpro/sync-engine';
 import type {
-  CreateOrderInput,
   Order,
+  OrderItem,
   OrderStatus,
+  ServiceUnit,
 } from '@lavanderpro/shared-types';
 import {
   ordersApi,
   type ListOrdersParams,
   type ListOrdersResponse,
 } from '~/lib/api-client';
+
+/**
+ * Extiende `CreateOrderInput` con campos denormalizados opcionales para
+ * que la UI (POS) pueda construir Order con totales y nombres completos
+ * sin un round-trip al server. Si el caller no los pasa, caen a defaults
+ * (unitPrice=0, serviceName=serviceId, unit='piece') — los recalcula
+ * el server en el pull.
+ */
+export interface CreateOrderItemDetail {
+  serviceId: string;
+  serviceName: string;
+  unit: ServiceUnit;
+  unitPrice: number;
+  quantity: number;
+  notes?: string;
+}
+
+export interface CreateOrderWithDetailsInput {
+  customerId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  isNewCustomer?: boolean;
+  notes?: string;
+  estimatedDeliveryAt?: number;
+  items: CreateOrderItemDetail[];
+}
 
 /**
  * Hooks de Orders con offline-first semantics.
@@ -162,21 +189,41 @@ export function useChangeOrderStatus() {
 export function useCreateOrder(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: CreateOrderInput): Promise<Order> => {
-      // Para MVP, simulamos creación local. En fase siguiente, el backend
-      // generará el ID + code via POST /api/orders.
+    mutationFn: async (
+      input: CreateOrderWithDetailsInput,
+    ): Promise<Order> => {
+      // Creación offline-first con items denormalizados y total computado
+      // en el cliente. El server re-computa en el merge (source of truth),
+      // pero la UI ya muestra el valor correcto offline.
       const now = Date.now();
+      const id = crypto.randomUUID();
+      const items: OrderItem[] = input.items.map((it) => {
+        const unitPrice = Number.isFinite(it.unitPrice) ? it.unitPrice : 0;
+        const quantity = it.quantity > 0 ? it.quantity : 1;
+        return {
+          id: crypto.randomUUID(),
+          orderId: id,
+          serviceId: it.serviceId,
+          serviceName: it.serviceName,
+          unit: it.unit,
+          quantity,
+          unitPrice,
+          subtotal: unitPrice * quantity,
+          notes: it.notes,
+        };
+      });
+      const total = items.reduce((sum, it) => sum + it.subtotal, 0);
       const newOrder: Order = {
-        id: crypto.randomUUID(),
+        id,
         tenantId,
         code: 'PENDING',
         customerId: input.customerId ?? '',
         customerName: input.customerName ?? 'Cliente',
         status: 'received',
-        total: 0,
+        total,
         paid: 0,
-        balance: 0,
-        items: [],
+        balance: total,
+        items,
         notes: input.notes,
         estimatedDeliveryAt: input.estimatedDeliveryAt,
         createdAt: now,

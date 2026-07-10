@@ -336,7 +336,13 @@ export type Order = z.infer<typeof OrderSchema>;
  * Payment
  * ========================================================================= */
 
-export const PaymentMethodSchema = z.enum(['cash', 'card', 'transfer', 'other']);
+export const PaymentMethodSchema = z.enum([
+  'cash',
+  'card',
+  'transfer',
+  'points',
+  'other',
+]);
 export type PaymentMethod = z.infer<typeof PaymentMethodSchema>;
 
 export const PaymentSchema = z.object({
@@ -350,6 +356,24 @@ export const PaymentSchema = z.object({
   updatedAt: TimestampSchema,
 });
 export type Payment = z.infer<typeof PaymentSchema>;
+
+/**
+ * Input para crear un Payment. El server genera id, tenantId, createdAt,
+ * updatedAt. Si está presente `id`, el server lo usa (offline-first).
+ *
+ * `amount` es positivo y menor o igual al balance pendiente del pedido
+ * al momento de crearlo (validación server-side; cliente puede enviar
+ * cualquier monto positivo y el server ajustará si excede).
+ */
+export const CreatePaymentInputSchema = z.object({
+  /** Si está presente, el server lo usa en vez de generar (offline-first). */
+  id: UuidSchema.optional(),
+  orderId: UuidSchema,
+  method: PaymentMethodSchema,
+  amount: z.number().positive(),
+  reference: z.string().max(80).optional(),
+});
+export type CreatePaymentInput = z.infer<typeof CreatePaymentInputSchema>;
 
 /* =========================================================================
  * Onboarding (Negocio / Sucursal / WhatsApp)

@@ -14,7 +14,7 @@
  * Logout: clearAll() borra TODO.
  */
 import Dexie, { type Table } from 'dexie';
-import type { Order, OrderItem, Service } from '@lavanderpro/shared-types';
+import type { Order, OrderItem, Payment, Service } from '@lavanderpro/shared-types';
 
 /**
  * User — snapshot local del usuario actual. Solo 1 row (id='current').
@@ -145,6 +145,21 @@ export interface OrderSnapshot {
 }
 
 /**
+ * Payment cached (pagos aplicados a un pedido).
+ * Persistir localmente permite cobrar un pedido y sincronizarlo después.
+ */
+export interface PaymentSnapshot {
+  id: string;
+  tenantId: string;
+  orderId: string;
+  method: Payment['method'];
+  amount: number;
+  reference?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
  * Sync queue — operaciones pendientes de subir al server.
  * uuid es UUID v7 generado en cliente (ordenable por tiempo).
  * dirty = 1 si la row no se ha subido al server, 0 si ya se sincronizó.
@@ -152,7 +167,7 @@ export interface OrderSnapshot {
  */
 export interface SyncQueueEntry {
   uuid: string;          // UUID v7 client-generated
-  entity: 'order' | 'customer' | 'service' | 'service_category';
+  entity: 'order' | 'customer' | 'service' | 'service_category' | 'payment';
   entityId: string;
   op: 'create' | 'update' | 'delete';
   payload: unknown;      // datos a enviar al server
@@ -184,13 +199,14 @@ export class LavanderProDB extends Dexie {
   customers!: Table<CustomerSnapshot, string>;
   services!: Table<ServiceSnapshot, string>;
   categories!: Table<CategorySnapshot, string>;
+  payments!: Table<PaymentSnapshot, string>;
   syncQueue!: Table<SyncQueueEntry, string>;
   meta!: Table<MetaEntry, string>;
   authSession!: Table<AuthSessionSnapshot, string>;
 
   constructor() {
     super('lavanderpro');
-    this.version(3)
+    this.version(4)
       .stores({
         // Primary key + índices secundarios
         users: 'id',
@@ -201,6 +217,8 @@ export class LavanderProDB extends Dexie {
         services: 'id, tenantId, categoryId, name, updatedAt',
         // v3: tabla categories para sync offline-first de categorías
         categories: 'id, tenantId, name, updatedAt',
+        // v4: tabla payments para sync offline-first de pagos
+        payments: 'id, tenantId, orderId, method, updatedAt',
         // 'dirty' para drain rápido de pending. 'entity' para filtros.
         syncQueue: 'uuid, entity, dirty, timestamp, [entity+entityId]',
         // 'key' es la primary key
@@ -211,6 +229,7 @@ export class LavanderProDB extends Dexie {
       .upgrade(async (tx) => {
         // v1 → v2: solo se crea la nueva tabla authSession, no se migran datos.
         // v2 → v3: solo se crea la tabla categories, no se migran datos.
+        // v3 → v4: solo se crea la tabla payments, no se migran datos.
       });
   }
 }
