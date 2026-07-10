@@ -45,6 +45,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Sidebar } from '~/components/sidebar';
 import { Topbar } from '~/components/topbar';
+import { OfflineBanner } from '~/components/offline-banner';
 import { useAuth } from '~/stores/auth-store';
 import { useCategories } from '~/stores/categories-queries';
 import {
@@ -452,6 +453,7 @@ export function PosContent() {
   return (
     <AppShell>
       <main id="main" className="flex-1 p-5 sm:p-6">
+        <OfflineBanner />
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 h-full">
           {/* ─── LEFT: Service picker (2/3) ─── */}
           <div className="xl:col-span-2 flex flex-col gap-5">

@@ -32,6 +32,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Sidebar } from '~/components/sidebar';
 import { Topbar } from '~/components/topbar';
+import { OfflineBanner } from '~/components/offline-banner';
 import { useAuth } from '~/stores/auth-store';
 import {
   useCategories,
@@ -102,6 +103,7 @@ export function CategoriasContent() {
   return (
     <AppShell>
       <main id="main" className="flex-1 p-5 sm:p-6">
+        <OfflineBanner />
         {/* Page header canónico (PageHeader primitive) */}
         <PageHeader
           icon={<Box className="h-5 w-5" />}

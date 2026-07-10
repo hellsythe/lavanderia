@@ -33,6 +33,7 @@ import {
 import { useMemo, useState } from 'react';
 import { Sidebar } from '~/components/sidebar';
 import { Topbar } from '~/components/topbar';
+import { OfflineBanner } from '~/components/offline-banner';
 import { useAuth } from '~/stores/auth-store';
 import {
   useChangeOrderStatus,
@@ -126,6 +127,7 @@ export function PedidosContent() {
   return (
     <AppShell>
       <main id="main" className="flex-1 p-5 sm:p-6">
+        <OfflineBanner />
         <Card>
           <CardHeader>
             <div className="flex items-center gap-3 flex-wrap">

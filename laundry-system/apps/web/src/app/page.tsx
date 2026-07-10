@@ -35,6 +35,7 @@ import {
 import { useMemo, useState } from 'react';
 import { Sidebar } from '~/components/sidebar';
 import { Topbar } from '~/components/topbar';
+import { OfflineBanner } from '~/components/offline-banner';
 import {
   useChangeOrderStatus,
   useOrderCounts,
@@ -74,6 +75,7 @@ export default function HomePage() {
       <div className="min-w-0 flex flex-col">
         <Topbar title="Panel Principal" breadcrumb="Resumen de hoy" />
         <main id="main" className="flex-1 p-5 sm:p-6">
+          <OfflineBanner />
           <KpiStrip />
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mt-5">
             <div className="xl:col-span-2">

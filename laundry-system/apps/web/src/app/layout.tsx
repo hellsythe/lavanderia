@@ -5,7 +5,6 @@ import { AuthHydrator } from '~/components/auth-hydrator';
 import { AuthGate } from '~/components/auth-gate';
 import { OnboardingGate } from '~/components/onboarding-gate';
 import { ServiceWorkerRegistration } from '~/components/sw-registration';
-import { OfflineBanner } from '~/components/offline-banner';
 
 export const metadata: Metadata = {
   title: 'LavanderPro — Panel',
@@ -62,7 +61,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           <AuthHydrator />
           <ServiceWorkerRegistration />
-          <OfflineBanner />
           <AuthGate>
             <OnboardingGate />
             {children}

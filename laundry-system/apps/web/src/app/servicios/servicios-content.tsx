@@ -37,6 +37,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Sidebar } from '~/components/sidebar';
 import { Topbar } from '~/components/topbar';
+import { OfflineBanner } from '~/components/offline-banner';
 import { useAuth } from '~/stores/auth-store';
 import { useCategories } from '~/stores/categories-queries';
 import {
@@ -130,6 +131,7 @@ export function ServiciosContent() {
   return (
     <AppShell>
       <main id="main" className="flex-1 p-5 sm:p-6">
+        <OfflineBanner />
         <PageHeader
           icon={<Box className="h-5 w-5" />}
           title="Servicios"
