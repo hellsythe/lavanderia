@@ -13,7 +13,6 @@ import {
   clearSession,
   getAccessToken,
   getRefreshToken,
-  persistSession,
   setCachedTokens,
   tenantsApi,
 } from '~/lib/api-client';

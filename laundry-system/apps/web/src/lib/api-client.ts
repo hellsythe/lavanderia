@@ -10,16 +10,14 @@
  */
 
 import { authSessionRepo, failedAttemptsRepo, userRepo } from '@lavanderpro/db-client';
-import { setAccessToken as setSyncEngineToken } from '@lavanderpro/sync-engine';
+import {
+  fetchWithAuth as sharedFetch,
+  setCachedTokens as sharedSetTokens,
+  clearCachedTokens as sharedClearTokens,
+  getAccessToken as sharedGetToken,
+  API_BASE,
+} from '@lavanderpro/sync-engine';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
-
-/**
- * Shape de la respuesta del backend.
- * La API anida los tokens en `tokens` para /auth/login y /auth/register.
- * /auth/refresh responde SIN anidar (ver auth.service.ts:refresh que
- * retorna `this.generateTokens(...)` directo).
- */
 export interface AuthResponse {
   tokens: {
     accessToken: string;
@@ -48,126 +46,29 @@ interface RefreshResponse {
   expiresIn: number;
 }
 
-// Cache en sessionStorage para sobrevivir:
-//  - HMR / Fast Refresh en dev (re-evalúa módulos → reset de vars top-level)
-//  - Navegación entre rutas (Next.js App Router)
-//  - Page reload dentro de la misma pestaña
-//
-// NO usamos localStorage (mayor superficie XSS) ni cookies (incompatibles
-// con Capacitor WebView + mobile). sessionStorage se limpia al cerrar la
-// pestaña, que es lo que queremos para una sesión "viva".
-const STORAGE_KEY = 'lp.session';
+// Re-exports — single source of truth en @lavanderpro/sync-engine/auth
+export {
+  setCachedTokens,
+  clearCachedTokens,
+  getAccessToken,
+  getRefreshToken,
+} from '@lavanderpro/sync-engine';
 
-interface StoredSession {
-  access: string;
-  refresh: string;
-}
-
-function readSession(): StoredSession | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as StoredSession;
-    if (typeof parsed.access !== 'string' || typeof parsed.refresh !== 'string') {
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function writeSession(session: StoredSession | null): void {
-  if (typeof window === 'undefined') return;
-  try {
-    if (session) {
-      window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-    } else {
-      window.sessionStorage.removeItem(STORAGE_KEY);
-    }
-  } catch {
-    // sessionStorage puede tirar en modo privado / Safari ITP — ignorar.
-  }
-}
-
-// Cache en memoria — espeja sessionStorage para no leer storage en cada request.
-let _cachedSession: StoredSession | null = readSession();
-
-/**
- * Devuelve el access token actualmente válido. El access token se desbloquea
- * vía unlockWithPin (auth-gate) o fresh login y se cachea en memoria +
- * sessionStorage.
- * Devuelve null si no hay sesión desbloqueada.
- */
-export function getAccessToken(): string | null {
-  // Si el módulo fue re-evaluado (HMR), re-leer de sessionStorage.
-  if (!_cachedSession) {
-    _cachedSession = readSession();
-  }
-  return _cachedSession?.access ?? null;
-}
-
-export function getRefreshToken(): string | null {
-  if (!_cachedSession) {
-    _cachedSession = readSession();
-  }
-  return _cachedSession?.refresh ?? null;
-}
-
-/**
- * Guarda los tokens en sessionStorage + cache de memoria.
- * Llamar después de fresh login o después de unlockWithPin exitoso.
- *
- * Sincroniza con el cache interno de @lavanderpro/sync-engine para que
- * el sync-engine pueda mandar el JWT en sus requests sin duplicar estado.
- */
-export function setCachedTokens(access: string, refresh: string): void {
-  _cachedSession = { access, refresh };
-  writeSession(_cachedSession);
-  setSyncEngineToken(access);
-}
-
-export function clearCachedTokens(): void {
-  _cachedSession = null;
-  writeSession(null);
-  setSyncEngineToken(null);
-}
-
-/**
- * Marca la sesión como "desbloqueada en memoria". NO persiste los tokens
- * (eso lo hace el setupPin con encriptación).
- */
-export function persistSession(data: AuthResponse): void {
-  setCachedTokens(data.tokens.accessToken, data.tokens.refreshToken);
-}
-
-/**
- * Borra todo: cache de memoria + sesión encriptada + cache local.
- * Llamar en logout para evitar que un atacante con acceso al device vea
- * los datos del user anterior.
- */
 export async function clearSession(): Promise<void> {
-  clearCachedTokens();
+  const { clearCachedTokens: clear } = await import('@lavanderpro/sync-engine');
+  clear();
   await authSessionRepo.clear();
   await failedAttemptsRepo.clear();
   await userRepo.clear();
 }
 
-export function getStoredUser(): AuthResponse['user'] | null {
-  return null;
-}
-
+export function getStoredUser(): AuthResponse['user'] | null { return null; }
 export async function getStoredUserAsync(): Promise<AuthResponse['user'] | null> {
   if (typeof window === 'undefined') return null;
   const snap = await authSessionRepo.get();
   return snap?.user ?? null;
 }
-
-export function getStoredTenant(): AuthResponse['tenant'] | null {
-  return null;
-}
-
+export function getStoredTenant(): AuthResponse['tenant'] | null { return null; }
 export async function getStoredTenantAsync(): Promise<AuthResponse['tenant'] | null> {
   if (typeof window === 'undefined') return null;
   const snap = await authSessionRepo.get();
@@ -179,26 +80,18 @@ export interface ApiError extends Error {
   fieldErrors?: Record<string, string[]>;
 }
 
-function makeError(
-  status: number,
-  message: string,
-  fieldErrors?: Record<string, string[]>,
-): ApiError {
-  const err = new Error(message) as ApiError;
-  err.status = status;
-  err.fieldErrors = fieldErrors;
-  return err;
-}
-
 async function parseError(res: Response): Promise<ApiError> {
   const body = (await res.json().catch(() => ({}))) as {
     message?: string | string[];
     errors?: Record<string, string[]>;
   };
-  const message = Array.isArray(body.message)
+  const msg = Array.isArray(body.message)
     ? body.message.join(', ')
     : body.message ?? 'Error';
-  return makeError(res.status, message, body.errors);
+  const err = new Error(msg) as ApiError;
+  err.status = res.status;
+  err.fieldErrors = body.errors;
+  return err;
 }
 
 interface RequestOptions extends Omit<RequestInit, 'body'> {
@@ -206,112 +99,19 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
   skipAuth?: boolean;
 }
 
-let refreshing: Promise<string | null> | null = null;
-
-async function refreshAccessToken(): Promise<string | null> {
-  if (typeof window === 'undefined') return null;
-  const refresh = getRefreshToken();
-  if (!refresh) return null;
-  try {
-    const res = await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: refresh }),
-    });
-    if (!res.ok) return null;
-    // /auth/refresh responde SIN anidar tokens (ver auth.service.ts:refresh).
-    const data = (await res.json()) as RefreshResponse;
-    if (!data.accessToken || !data.refreshToken) return null;
-    setCachedTokens(data.accessToken, data.refreshToken);
-    return data.accessToken;
-  } catch {
-    return null;
-  }
-}
-
 export async function apiRequest<T>(
   path: string,
   opts: RequestOptions = {},
 ): Promise<T> {
   const { json, skipAuth, headers, ...rest } = opts;
-  const buildHeaders = (token: string | null): HeadersInit => {
-    const h: Record<string, string> = {
-      ...(headers as Record<string, string>),
-    };
-    if (json !== undefined) h['Content-Type'] = 'application/json';
-    if (!skipAuth && token) h['Authorization'] = `Bearer ${token}`;
-    return h;
-  };
-
   const body = json !== undefined ? JSON.stringify(json) : undefined;
 
-  // Si NO hay tokens (access + refresh), no tiene sentido pegar al API
-  // — guaranteed 401 + deja al usuario viendo la app "rota". Limpiamos
-  // sesión y mandamos a /login.
-  const access = getAccessToken();
-  const refresh = getRefreshToken();
-  if (!skipAuth && !access && !refresh) {
-    // eslint-disable-next-line no-console
-    console.warn(`[api] ${path} sin access token en cache — redirigiendo a login`);
-    await clearSession();
-    if (
-      typeof window !== 'undefined' &&
-      !window.location.pathname.startsWith('/login')
-    ) {
-      window.location.href = '/login';
-    }
-    throw new Error('No hay sesión activa. Redirigiendo a login…');
-  }
-
-  // Primer intento
-  const token = access;
-  if (!skipAuth && !token) {
-    // eslint-disable-next-line no-console
-    console.warn(`[api] ${path} sin access token en cache`);
-  }
-  let res = await fetch(`${API_BASE}${path}`, {
+  const res = await sharedFetch(path, {
     ...rest,
-    headers: buildHeaders(token),
+    skipAuth,
+    headers: { ...(headers as Record<string, string>) },
     body,
   });
-
-  // Auto-refresh en 401 (excepto si es /auth/*).
-  // Si no hay tokens guardados, NO intentamos refresh — mandamos a login
-  // directamente (el access está muerto, sin refresh no hay forma de salvar).
-  if (res.status === 401 && !skipAuth && !path.startsWith('/auth/')) {
-    const hasRefresh = !!refresh;
-    if (hasRefresh) {
-      refreshing ??= refreshAccessToken().finally(() => {
-        refreshing = null;
-      });
-      const newToken = await refreshing;
-      if (newToken) {
-        res = await fetch(`${API_BASE}${path}`, {
-          ...rest,
-          headers: buildHeaders(newToken),
-          body,
-        });
-      } else {
-        // Refresh falló: limpiamos sesión y mandamos a login.
-        await clearSession();
-        if (
-          typeof window !== 'undefined' &&
-          !window.location.pathname.startsWith('/login')
-        ) {
-          window.location.href = '/login';
-        }
-      }
-    } else {
-      // No hay refresh token: limpiamos y mandamos a login.
-      await clearSession();
-      if (
-        typeof window !== 'undefined' &&
-        !window.location.pathname.startsWith('/login')
-      ) {
-        window.location.href = '/login';
-      }
-    }
-  }
 
   if (!res.ok) throw await parseError(res);
   return (await res.json()) as T;

@@ -41,7 +41,7 @@ import type {
 } from '@lavanderpro/shared-types';
 import { useNetworkStore } from './network';
 import { resolveConflict } from './conflict';
-import { API_BASE, getAccessToken } from './auth';
+import { API_BASE, fetchWithAuth, fetchWithAuthJson, getAccessToken } from './auth';
 
 interface SyncStore {
   isSyncing: boolean;
@@ -66,33 +66,7 @@ const PERIODIC_SYNC_MS = 5 * 60_000; // 5 min
 let periodicSyncId: ReturnType<typeof setInterval> | null = null;
 let pendingSyncId: ReturnType<typeof setTimeout> | null = null;
 
-/**
- * Wrapper de fetch con URL absoluta + Authorization header.
- *
- * Antes hacía `fetch(path)` con path relativo (`/api/sync/...`), que
- * resolvía al MISMO origen del browser (web dev/prod) → 404 porque
- * esas rutas viven en el API. Ahora usa `API_BASE` absoluto (resuelto
- * desde `process.env.NEXT_PUBLIC_API_URL`) y adjunta el JWT.
- *
- * Los paths NO llevan prefijo `/api` — eso lo aporta `API_BASE`.
- */
-async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
-  const token = getAccessToken();
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Sync API ${url} ${res.status}: ${text.slice(0, 200)}`);
-  }
-  return (await res.json()) as T;
-}
+
 
 export const useSyncStore = create<SyncStore>((set, get) => ({
   isSyncing: false,
@@ -145,7 +119,7 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
         timestamp: e.timestamp,
       }));
 
-      await apiRequest('/sync/batch', {
+      await fetchWithAuthJson('/sync/batch', {
         method: 'POST',
         body: JSON.stringify({ operations } satisfies SyncPushBatch),
       });
@@ -172,7 +146,7 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
     try {
       const lastSync = await metaRepo.getLastSync();
       const qs = lastSync > 0 ? `?since=${lastSync}` : '';
-      const res = await apiRequest<SyncPullResponse>(`/sync/changes${qs}`);
+      const res = await fetchWithAuthJson<SyncPullResponse>(`/sync/changes${qs}`);
 
       // Merge changes con LWW
       for (const change of res.changes) {
@@ -278,7 +252,7 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
     for (const entry of pending) {
       try {
         const ext = entry.filename.split('.').pop() ?? 'png';
-        const presignRes = await apiRequest<{
+        const presignRes = await fetchWithAuthJson<{
           uploadUrl: string;
           key: string;
           publicUrl: string;
@@ -301,7 +275,7 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
           throw new Error(`PUT upload failed: ${putRes.status}`);
         }
 
-        await apiRequest(`/tenants/${entry.tenantId}`, {
+        await fetchWithAuthJson(`/tenants/${entry.tenantId}`, {
           method: 'PUT',
           body: JSON.stringify({ logoUrl: presignRes.publicUrl }),
         });
@@ -340,7 +314,7 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
     set({ isSyncing: true });
     try {
       // Forzar since=0 → traer todo
-      const res = await apiRequest<SyncPullResponse>('/sync/changes?since=0');
+      const res = await fetchWithAuthJson<SyncPullResponse>('/sync/changes?since=0');
 
       // BulkPut todo. Conflicto LWW aplica (todos los registros son del server
       // así que son más nuevos que la cache vacía).

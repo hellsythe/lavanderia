@@ -12,4 +12,13 @@
 export { useNetworkStore, teardownNetworkDetection } from './network';
 export { useSyncStore, initSyncEngine, teardownSyncEngine, enqueueSync } from './sync-engine';
 export { resolveConflict } from './conflict';
-export { API_BASE, setAccessToken, getAccessToken } from './auth';
+export {
+  API_BASE,
+  fetchWithAuth,
+  fetchWithAuthJson,
+  setAccessToken,
+  getAccessToken,
+  getRefreshToken,
+  setCachedTokens,
+  clearCachedTokens,
+} from './auth';
