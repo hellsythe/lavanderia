@@ -23,6 +23,7 @@ import {
   type TenantRepositoryPort,
 } from './ports/tenant-repository.port';
 import { StorageService } from '../storage/storage.service';
+import { BranchesService } from '../branches/branches.service';
 
 /**
  * TenantsService — use cases del bounded context de tenants.
@@ -36,6 +37,7 @@ export class TenantsService {
     @Inject(TENANT_REPOSITORY)
     private readonly tenants: TenantRepositoryPort,
     private readonly storage: StorageService,
+    private readonly branches: BranchesService,
   ) {}
 
   async create(name: string): Promise<Tenant> {
@@ -92,10 +94,17 @@ export class TenantsService {
       }
       case 2: {
         const d = input as OnboardingSucursalInput;
-        patch.branchName = d.branchName;
-        patch.branchAddress =
+        const address =
           d.sameAsFiscal && tenant.fiscalAddress ? tenant.fiscalAddress : d.branchAddress;
-        patch.branchPhone = d.branchPhone;
+        await this.branches.create(
+          {
+            name: d.branchName,
+            address: address,
+            phone: d.branchPhone,
+            isMain: true,
+          },
+          tenantId,
+        );
         break;
       }
       case 3: {
@@ -127,9 +136,6 @@ export class TenantsService {
     if (input.fiscalName !== undefined) patch.fiscalName = input.fiscalName;
     if (input.fiscalAddress !== undefined) patch.fiscalAddress = input.fiscalAddress;
     if (input.fiscalTaxId !== undefined) patch.fiscalTaxId = input.fiscalTaxId;
-    if (input.branchName !== undefined) patch.branchName = input.branchName;
-    if (input.branchAddress !== undefined) patch.branchAddress = input.branchAddress;
-    if (input.branchPhone !== undefined) patch.branchPhone = input.branchPhone;
     if (input.whatsappPhone !== undefined) patch.whatsappPhone = input.whatsappPhone;
     if (input.logoUrl !== undefined) patch.logoUrl = input.logoUrl;
 

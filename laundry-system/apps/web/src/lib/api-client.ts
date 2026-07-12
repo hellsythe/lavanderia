@@ -522,3 +522,16 @@ export const paymentsApi = {
   listByOrder: (orderId: string) =>
     apiRequest<Payment[]>(`/payments?orderId=${orderId}`),
 };
+
+// Branches helpers
+import type { Branch, CreateBranchInput, UpdateBranchInput } from '@lavanderpro/shared-types';
+
+export const branchesApi = {
+  list: () => apiRequest<Branch[]>('/branches'),
+  get: (id: string) => apiRequest<Branch>(`/branches/${id}`),
+  create: (input: CreateBranchInput) =>
+    apiRequest<Branch>('/branches', { method: 'POST', json: input }),
+  update: (id: string, input: UpdateBranchInput) =>
+    apiRequest<Branch>(`/branches/${id}`, { method: 'PATCH', json: input }),
+  remove: (id: string) => apiRequest<void>(`/branches/${id}`, { method: 'DELETE' }),
+};

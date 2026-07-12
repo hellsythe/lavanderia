@@ -7,6 +7,7 @@ import { ServiceCategoryOrmEntity } from '../services/infrastructure/entities/se
 import { CustomerOrmEntity } from '../database/entities/customer.orm-entity';
 import { PaymentOrmEntity } from '../payments/infrastructure/payment.orm-entity';
 import { TenantOrmEntity } from '../tenants/infrastructure/tenant.orm-entity';
+import { BranchOrmEntity } from '../branches/infrastructure/branch.orm-entity';
 import { CustomersModule } from '../customers/customers.module';
 import { SyncController } from './sync.controller';
 import { SyncService } from './sync.service';
@@ -21,6 +22,7 @@ import { SyncService } from './sync.service';
       CustomerOrmEntity,
       PaymentOrmEntity,
       TenantOrmEntity,
+      BranchOrmEntity,
     ]),
     CustomersModule,
   ],

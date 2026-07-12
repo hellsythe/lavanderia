@@ -7,9 +7,10 @@ import {
 import { TypeormTenantRepository } from './infrastructure/typeorm-tenant.repository';
 import { TenantsService } from './tenants.service';
 import { TenantsController } from './tenants.controller';
+import { BranchesModule } from '../branches/branches.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([TenantOrmEntity])],
+  imports: [TypeOrmModule.forFeature([TenantOrmEntity]), BranchesModule],
   controllers: [TenantsController],
   providers: [
     TenantsService,

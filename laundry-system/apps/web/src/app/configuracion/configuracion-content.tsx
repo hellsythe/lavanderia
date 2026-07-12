@@ -25,6 +25,7 @@ import {
   Phone,
   Save,
   Shield,
+  Store,
   Upload,
 } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -76,9 +77,6 @@ export function ConfiguracionContent() {
       fiscalName: tenant?.fiscalName ?? '',
       fiscalAddress: tenant?.fiscalAddress ?? '',
       fiscalTaxId: tenant?.fiscalTaxId ?? '',
-      branchName: tenant?.branchName ?? '',
-      branchAddress: tenant?.branchAddress ?? '',
-      branchPhone: tenant?.branchPhone ?? '',
       whatsappPhone: tenant?.whatsappPhone ?? '',
     },
   });
@@ -209,46 +207,20 @@ export function ConfiguracionContent() {
               </CardBody>
             </Card>
 
-            {/* Sucursal */}
+            {/* Sucursales */}
             <Card>
               <CardHeader>
-                <CardTitle>Sucursal</CardTitle>
+                <CardTitle>Sucursales</CardTitle>
               </CardHeader>
               <CardBody>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field
-                    id="branchName"
-                    label="Nombre de la sucursal"
-                    placeholder="Sucursal Centro"
-                    error={errors.branchName?.message}
-                    register={register('branchName')}
-                  />
-                  <Field
-                    id="branchPhone"
-                    label="Teléfono"
-                    placeholder="55 1234 5678"
-                    type="tel"
-                    error={errors.branchPhone?.message}
-                    register={register('branchPhone')}
-                  />
-                </div>
-                <div className="mt-4">
-                  <Label htmlFor="branchAddress" variant="caps">
-                    Dirección de la sucursal
-                  </Label>
-                  <Textarea
-                    id="branchAddress"
-                    placeholder="Av. Reforma 123, CDMX"
-                    className="mt-1.5"
-                    rows={2}
-                    {...register('branchAddress')}
-                  />
-                  {errors.branchAddress?.message && (
-                    <span className="text-meta text-danger font-semibold mt-0.5">
-                      {errors.branchAddress.message}
-                    </span>
-                  )}
-                </div>
+                <p className="text-meta text-muted mb-3">
+                  Gestioná las sucursales de tu lavandería. Cada sucursal tiene su
+                  propio nombre, dirección y teléfono.
+                </p>
+                <Button type="button" variant="secondary" onClick={() => window.location.href = '/sucursales'}>
+                  <Store className="h-4 w-4" />
+                  Ir a Sucursales
+                </Button>
               </CardBody>
             </Card>
 

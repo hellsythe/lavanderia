@@ -206,6 +206,7 @@ export function PosContent() {
     order: import('@lavanderpro/shared-types').Order;
     customer: CustomerSnapshot;
     payments: TicketPaymentLine[];
+    logoUrl?: string | null;
   } | null>(null);
 
   // === Data ===
@@ -442,6 +443,7 @@ export function PosContent() {
         order: finalOrder,
         customer: selectedCustomer,
         payments: ticketPayments,
+        logoUrl: tenant?.logoUrl,
       });
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -1821,12 +1823,13 @@ function TicketModal({
     order: import('@lavanderpro/shared-types').Order;
     customer: CustomerSnapshot;
     payments: TicketPaymentLine[];
+    logoUrl?: string | null;
   } | null;
   tenantName?: string;
   onClose: () => void;
 }) {
   if (!ticket) return null;
-  const { order, customer, payments } = ticket;
+  const { order, customer, payments, logoUrl } = ticket;
   const totalChange = payments.reduce(
     (sum, p) => sum + (p.change ?? 0),
     0,
@@ -1861,6 +1864,7 @@ function TicketModal({
               customer={customer}
               payments={payments}
               tenantName={tenantName ?? TICKET_TENANT_FALLBACK}
+              logoUrl={logoUrl}
             />
           </div>
 
@@ -1884,6 +1888,7 @@ function TicketModal({
                 customer,
                 payments,
                 tenantName: tenantName ?? TICKET_TENANT_FALLBACK,
+                logoUrl,
               });
             }}
           >
@@ -1912,17 +1917,30 @@ function TicketPreview({
   customer,
   payments,
   tenantName,
+  logoUrl,
 }: {
   order: import('@lavanderpro/shared-types').Order;
   customer: CustomerSnapshot;
   payments: TicketPaymentLine[];
   tenantName: string;
+  logoUrl?: string | null;
 }) {
   return (
     <div className="ticket-receipt bg-white text-black font-mono text-[11px] leading-tight shadow-md">
-      <div className="text-center font-bold text-[14px] mb-1">
-        {tenantName.toUpperCase()}
-      </div>
+      {logoUrl ? (
+        <div className="text-center mb-2">
+          <img
+            src={logoUrl}
+            alt="Logo"
+            className="h-10 mx-auto object-contain"
+            style={{ maxWidth: '72mm' }}
+          />
+        </div>
+      ) : (
+        <div className="text-center font-bold text-[14px] mb-1">
+          {tenantName.toUpperCase()}
+        </div>
+      )}
       <div className="text-center text-[10px] mb-1">
         {formatDateTime(order.createdAt)}
       </div>
@@ -2100,11 +2118,13 @@ function printTicket({
   customer,
   payments,
   tenantName,
+  logoUrl,
 }: {
   order: import('@lavanderpro/shared-types').Order;
   customer: CustomerSnapshot;
   payments: TicketPaymentLine[];
   tenantName: string;
+  logoUrl?: string | null;
 }) {
   if (typeof window === 'undefined') return;
 
@@ -2115,7 +2135,7 @@ function printTicket({
     return;
   }
 
-  const ticketHtml = renderTicketHTML({ order, customer, payments, tenantName });
+  const ticketHtml = renderTicketHTML({ order, customer, payments, tenantName, logoUrl });
   win.document.open();
   win.document.write(`<!doctype html>
 <html lang="es">
@@ -2163,11 +2183,13 @@ function renderTicketHTML({
   customer,
   payments,
   tenantName,
+  logoUrl,
 }: {
   order: import('@lavanderpro/shared-types').Order;
   customer: CustomerSnapshot;
   payments: TicketPaymentLine[];
   tenantName: string;
+  logoUrl?: string | null;
 }): string {
   const escape = (s: string) =>
     s
@@ -2233,9 +2255,15 @@ function renderTicketHTML({
     .join('');
 
   return `<div class="ticket-receipt">
-  <div style="text-align:center;font-weight:700;font-size:14px;margin-bottom:2px">
+  ${
+    logoUrl
+      ? `<div style="text-align:center;margin-bottom:4px">
+    <img src="${escape(logoUrl)}" alt="Logo" style="height:40px;max-width:72mm;object-fit:contain;margin:0 auto" />
+  </div>`
+      : `<div style="text-align:center;font-weight:700;font-size:14px;margin-bottom:2px">
     ${escape(tenantName.toUpperCase())}
-  </div>
+  </div>`
+  }
   <div style="text-align:center;font-size:10px;margin-bottom:2px">
     ${formatDateTime(order.createdAt)}
   </div>

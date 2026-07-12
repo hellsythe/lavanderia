@@ -36,6 +36,10 @@ export class OrderOrmEntity {
   customerName!: string;
 
   @Index()
+  @Column({ name: 'branch_id', type: 'uuid', nullable: true })
+  branchId?: string;
+
+  @Index()
   @Column({
     name: 'status',
     type: 'enum',

@@ -14,6 +14,7 @@ import { ServiceCategoryOrmEntity } from '../services/infrastructure/entities/se
 import { CustomerOrmEntity } from '../database/entities/customer.orm-entity';
 import { PaymentOrmEntity } from '../payments/infrastructure/payment.orm-entity';
 import { TenantOrmEntity } from '../tenants/infrastructure/tenant.orm-entity';
+import { BranchOrmEntity } from '../branches/infrastructure/branch.orm-entity';
 import {
   CUSTOMER_REPOSITORY,
   type CustomerRepositoryPort,
@@ -47,6 +48,8 @@ export class SyncService {
     private readonly paymentRepo: Repository<PaymentOrmEntity>,
     @InjectRepository(TenantOrmEntity)
     private readonly tenantRepo: Repository<TenantOrmEntity>,
+    @InjectRepository(BranchOrmEntity)
+    private readonly branchRepo: Repository<BranchOrmEntity>,
     @Inject(CUSTOMER_REPOSITORY)
     private readonly customerRepo: CustomerRepositoryPort,
   ) {}
@@ -147,6 +150,9 @@ export class SyncService {
           accepted++;
         } else if (op.entity === 'tenant') {
           await this.applyTenantOp(tenantId, op);
+          accepted++;
+        } else if (op.entity === 'branch') {
+          await this.applyBranchOp(tenantId, op);
           accepted++;
         } else {
           this.logger.warn(`Sync op not supported: ${op.entity}/${op.op}`);
@@ -251,6 +257,7 @@ export class SyncService {
         ? new Date(payload.deliveredAt)
         : undefined,
       notes: payload.notes,
+      branchId: (payload as any).branchId ?? undefined,
     });
 
     const saved = await this.orderRepo.save(row);
@@ -614,17 +621,75 @@ export class SyncService {
       existing.fiscalAddress = payload.fiscalAddress;
     if (payload.fiscalTaxId !== undefined)
       existing.fiscalTaxId = payload.fiscalTaxId;
-    if (payload.branchName !== undefined)
-      existing.branchName = payload.branchName;
-    if (payload.branchAddress !== undefined)
-      existing.branchAddress = payload.branchAddress;
-    if (payload.branchPhone !== undefined)
-      existing.branchPhone = payload.branchPhone;
     if (payload.whatsappPhone !== undefined)
       existing.whatsappPhone = payload.whatsappPhone;
     if (payload.logoUrl !== undefined)
       existing.logoUrl = payload.logoUrl;
 
     await this.tenantRepo.save(existing);
+  }
+
+  /* -----------------------------------------------------------------------
+   * Branch — upsert desde sync (offline-first)
+   * ----------------------------------------------------------------------- */
+
+  private async applyBranchOp(
+    tenantId: string,
+    op: SyncOperation,
+  ): Promise<void> {
+    if (op.op !== 'create' && op.op !== 'update') {
+      this.logger.warn(
+        `Sync op branch solo permite create/update, recibido: ${op.op}`,
+      );
+      return;
+    }
+
+    const payload = op.payload as Partial<{
+      name: string;
+      address?: string | null;
+      phone?: string | null;
+      isMain?: boolean;
+      active?: boolean;
+      updatedAt: number;
+    }>;
+
+    const existing = await this.branchRepo.findOne({
+      where: { id: op.entityId, tenantId },
+    });
+
+    if (!existing) {
+      // Crear — offline-first (usamos save directo porque create no acepta id)
+      const row = await this.branchRepo.save({
+        id: op.entityId,
+        tenantId,
+        name: payload.name ?? 'Sucursal',
+        address: payload.address ?? undefined,
+        phone: payload.phone ?? undefined,
+        isMain: payload.isMain ?? false,
+        active: payload.active ?? true,
+      } as BranchOrmEntity);
+      void row;
+      return;
+    }
+
+    // Update LWW
+    if (
+      payload.updatedAt &&
+      existing.updatedAt.getTime() >= payload.updatedAt
+    ) {
+      return;
+    }
+
+    if (payload.name !== undefined) existing.name = payload.name;
+    if (payload.address !== undefined)
+      existing.address = payload.address ?? undefined;
+    if (payload.phone !== undefined)
+      existing.phone = payload.phone ?? undefined;
+    if (payload.isMain !== undefined)
+      existing.isMain = payload.isMain;
+    if (payload.active !== undefined)
+      existing.active = payload.active;
+
+    await this.branchRepo.save(existing);
   }
 }

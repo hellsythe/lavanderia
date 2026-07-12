@@ -124,6 +124,21 @@ export interface CategorySnapshot {
 }
 
 /**
+ * Branch cached (sucursal multi-sucursal).
+ */
+export interface BranchSnapshot {
+  id: string;
+  tenantId: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  isMain: boolean;
+  active: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
  * Order cached (denormalizamos items dentro para simplificar queries offline).
  */
 export interface OrderSnapshot {
@@ -132,6 +147,7 @@ export interface OrderSnapshot {
   code: string;
   customerId: string;
   customerName: string;
+  branchId?: string;
   status: Order['status'];
   total: number;
   paid: number;
@@ -186,7 +202,7 @@ export interface PendingUpload {
  */
 export interface SyncQueueEntry {
   uuid: string;          // UUID v7 client-generated
-  entity: 'order' | 'customer' | 'service' | 'service_category' | 'payment' | 'tenant' | 'pending_upload';
+  entity: 'order' | 'customer' | 'service' | 'service_category' | 'payment' | 'tenant' | 'pending_upload' | 'branch';
   entityId: string;
   op: 'create' | 'update' | 'delete';
   payload: unknown;      // datos a enviar al server
@@ -220,13 +236,14 @@ export class LavanderProDB extends Dexie {
   categories!: Table<CategorySnapshot, string>;
   payments!: Table<PaymentSnapshot, string>;
   pendingUploads!: Table<PendingUpload, string>;
+  branches!: Table<BranchSnapshot, string>;
   syncQueue!: Table<SyncQueueEntry, string>;
   meta!: Table<MetaEntry, string>;
   authSession!: Table<AuthSessionSnapshot, string>;
 
   constructor() {
     super('lavanderpro');
-    this.version(5)
+    this.version(6)
       .stores({
         // Primary key + índices secundarios
         users: 'id',
@@ -241,6 +258,8 @@ export class LavanderProDB extends Dexie {
         payments: 'id, tenantId, orderId, method, updatedAt',
         // v5: tabla pending_uploads para subir logos offline
         pendingUploads: 'id, tenantId, entity, dirty',
+        // v6: tabla branches para multi-sucursal
+        branches: 'id, tenantId, isMain, active, updatedAt',
         // 'dirty' para drain rápido de pending. 'entity' para filtros.
         syncQueue: 'uuid, entity, dirty, timestamp, [entity+entityId]',
         // 'key' es la primary key
@@ -253,6 +272,7 @@ export class LavanderProDB extends Dexie {
         // v2 → v3: solo se crea la tabla categories, no se migran datos.
         // v3 → v4: solo se crea la tabla payments, no se migran datos.
         // v4 → v5: solo se crea la tabla pendingUploads, no se migran datos.
+        // v5 → v6: solo se crea la tabla branches, no se migran datos.
       });
   }
 }

@@ -36,9 +36,6 @@ type AuthTenant = {
   fiscalName?: string | null;
   fiscalAddress?: string | null;
   fiscalTaxId?: string | null;
-  branchName?: string | null;
-  branchAddress?: string | null;
-  branchPhone?: string | null;
   whatsappPhone?: string | null;
   whatsappVerifiedAt?: number | null;
   logoUrl?: string | null;
@@ -290,9 +287,7 @@ export const useAuth = create<AuthState>((set, get) => ({
         plan: updated.plan,
         fiscalName: updated.fiscalName ?? null,
         fiscalAddress: updated.fiscalAddress ?? null,
-        branchName: updated.branchName ?? null,
-        branchAddress: updated.branchAddress ?? null,
-        branchPhone: updated.branchPhone ?? null,
+        fiscalTaxId: updated.fiscalTaxId ?? null,
         whatsappPhone: updated.whatsappPhone ?? null,
         whatsappVerifiedAt: updated.whatsappVerifiedAt ?? null,
         onboardingStep: updated.onboardingStep,
@@ -314,9 +309,6 @@ export const useAuth = create<AuthState>((set, get) => ({
             fiscalName: updated.fiscalName ?? s.tenant.fiscalName,
             fiscalAddress: updated.fiscalAddress ?? s.tenant.fiscalAddress,
             fiscalTaxId: updated.fiscalTaxId ?? s.tenant.fiscalTaxId,
-            branchName: updated.branchName ?? s.tenant.branchName,
-            branchAddress: updated.branchAddress ?? s.tenant.branchAddress,
-            branchPhone: updated.branchPhone ?? s.tenant.branchPhone,
             whatsappPhone: updated.whatsappPhone ?? s.tenant.whatsappPhone,
             logoUrl: updated.logoUrl ?? s.tenant.logoUrl,
           }

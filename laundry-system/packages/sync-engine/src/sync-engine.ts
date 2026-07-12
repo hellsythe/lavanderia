@@ -16,6 +16,7 @@
 import { v7 as uuidv7 } from 'uuid';
 import { create } from 'zustand';
 import {
+  branchRepo,
   categoryRepo,
   customerRepo,
   metaRepo,
@@ -27,6 +28,7 @@ import {
   type ServiceSnapshot,
 } from '@lavanderpro/db-client';
 import type {
+  Branch,
   Order,
   Customer,
   Payment,
@@ -229,6 +231,9 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
             const winner = resolveConflict(local, remote);
             await paymentRepo.put(winner);
           }
+        } else if (change.entity === 'branch') {
+          const remote = change.payload as Branch;
+          await branchRepo.put(remote as any);
         }
       }
 
@@ -366,6 +371,9 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
         } else if (change.entity === 'payment') {
           const remote = change.payload as Payment;
           await paymentRepo.put(remote);
+        } else if (change.entity === 'branch') {
+          const remote = change.payload as Branch;
+          await branchRepo.put(remote as any);
         }
       }
 

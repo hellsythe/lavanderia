@@ -14,6 +14,7 @@ export type {
   OrderSnapshot,
   PaymentSnapshot,
   PendingUpload,
+  BranchSnapshot,
   SyncQueueEntry,
   MetaEntry,
   LavanderProDB,
@@ -28,4 +29,5 @@ export { categoryRepo } from './repos/categories.repo';
 export { serviceRepo } from './repos/services.repo';
 export { paymentRepo } from './repos/payments.repo';
 export { pendingUploadRepo } from './repos/pending-uploads.repo';
+export { branchRepo } from './repos/branches.repo';
 export { lwwMerge } from './lib/merge';

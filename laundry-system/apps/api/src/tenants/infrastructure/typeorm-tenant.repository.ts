@@ -46,9 +46,6 @@ export class TypeormTenantRepository implements TenantRepositoryPort {
     if (patch.fiscalName !== undefined) fields.fiscalName = patch.fiscalName ?? null;
     if (patch.fiscalAddress !== undefined) fields.fiscalAddress = patch.fiscalAddress ?? null;
     if (patch.fiscalTaxId !== undefined) fields.fiscalTaxId = patch.fiscalTaxId ?? null;
-    if (patch.branchName !== undefined) fields.branchName = patch.branchName ?? null;
-    if (patch.branchAddress !== undefined) fields.branchAddress = patch.branchAddress ?? null;
-    if (patch.branchPhone !== undefined) fields.branchPhone = patch.branchPhone ?? null;
     if (patch.whatsappPhone !== undefined) fields.whatsappPhone = patch.whatsappPhone ?? null;
     if (patch.whatsappVerifiedAt !== undefined) {
       fields.whatsappVerifiedAt = patch.whatsappVerifiedAt ? new Date(patch.whatsappVerifiedAt) : null;
@@ -78,9 +75,6 @@ export class TypeormTenantRepository implements TenantRepositoryPort {
       fiscalName: row.fiscalName ?? undefined,
       fiscalAddress: row.fiscalAddress ?? undefined,
       fiscalTaxId: row.fiscalTaxId ?? undefined,
-      branchName: row.branchName ?? undefined,
-      branchAddress: row.branchAddress ?? undefined,
-      branchPhone: row.branchPhone ?? undefined,
       whatsappPhone: row.whatsappPhone ?? undefined,
       whatsappVerifiedAt: row.whatsappVerifiedAt ? row.whatsappVerifiedAt.getTime() : undefined,
       onboardingStep: row.onboardingStep,

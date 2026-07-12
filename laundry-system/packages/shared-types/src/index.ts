@@ -32,10 +32,6 @@ export const TenantSchema = z.object({
   fiscalName: z.string().min(2).max(120).optional(),
   fiscalAddress: z.string().min(5).max(200).optional(),
   fiscalTaxId: z.string().min(8).max(20).optional(),
-  // Datos de sucursal — paso 2 del onboarding
-  branchName: z.string().min(2).max(120).optional(),
-  branchAddress: z.string().min(5).max(200).optional(),
-  branchPhone: z.string().min(8).max(30).optional(),
   // WhatsApp — paso 3 del onboarding
   whatsappPhone: z.string().min(10).max(15).optional(),
   whatsappVerifiedAt: TimestampSchema.optional(),
@@ -53,13 +49,38 @@ export const UpdateTenantInputSchema = z.object({
   fiscalName: z.string().min(2).max(120).optional(),
   fiscalAddress: z.string().min(5).max(200).optional(),
   fiscalTaxId: z.string().min(8).max(20).optional(),
-  branchName: z.string().min(2).max(120).optional(),
-  branchAddress: z.string().min(5).max(200).optional(),
-  branchPhone: z.string().min(8).max(30).optional(),
   whatsappPhone: z.string().min(10).max(15).optional(),
   logoUrl: z.string().max(500).optional(),
 });
 export type UpdateTenantInput = z.infer<typeof UpdateTenantInputSchema>;
+
+/* =========================================================================
+ * Branch (sucursal) — multi-sucursal desde MVP
+ * ========================================================================= */
+
+export const BranchSchema = z.object({
+  id: UuidSchema,
+  tenantId: TenantIdSchema,
+  name: z.string().min(1).max(120),
+  address: z.string().max(200).optional(),
+  phone: z.string().max(30).optional(),
+  isMain: z.boolean().default(false),
+  active: z.boolean().default(true),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+});
+export type Branch = z.infer<typeof BranchSchema>;
+
+export const CreateBranchInputSchema = z.object({
+  name: z.string().min(1).max(120),
+  address: z.string().max(200).optional(),
+  phone: z.string().max(30).optional(),
+  isMain: z.boolean().default(false),
+});
+export type CreateBranchInput = z.infer<typeof CreateBranchInputSchema>;
+
+export const UpdateBranchInputSchema = CreateBranchInputSchema.partial();
+export type UpdateBranchInput = z.infer<typeof UpdateBranchInputSchema>;
 
 /* =========================================================================
  * User
@@ -335,6 +356,7 @@ export const OrderSchema = z.object({
   code: z.string().regex(/^ORD-\d{4,}$/), // ORD-0001
   customerId: UuidSchema,
   customerName: z.string(), // denormalizado
+  branchId: UuidSchema.optional(),
   status: OrderStatusSchema,
   total: z.number().nonnegative(),
   paid: z.number().nonnegative().default(0),
@@ -472,6 +494,7 @@ export const SyncEntityTypeSchema = z.enum([
   'payment',
   'tenant',
   'pending_upload',
+  'branch',
 ]);
 export type SyncEntityType = z.infer<typeof SyncEntityTypeSchema>;
 
@@ -545,6 +568,7 @@ export const CreateOrderInputSchema = z.object({
   customerName: z.string().min(1).max(120).optional(),
   customerPhone: z.string().max(30).optional(),
   isNewCustomer: z.boolean().default(false),
+  branchId: UuidSchema.optional(),
   items: z.array(CreateOrderItemInputSchema).min(1),
   estimatedDeliveryAt: TimestampSchema.optional(),
   notes: z.string().max(500).optional(),

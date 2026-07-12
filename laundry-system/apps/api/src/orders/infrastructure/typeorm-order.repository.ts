@@ -37,6 +37,7 @@ export class TypeormOrderRepository implements OrderRepositoryPort {
       tenantId: order.tenantId,
       customerId: order.customerId,
       customerName: order.customerName,
+      branchId: order.branchId ?? undefined,
       status: order.status,
       total: order.total.toFixed(2),
       paid: order.paid.toFixed(2),
@@ -126,6 +127,7 @@ export class TypeormOrderRepository implements OrderRepositoryPort {
       : undefined;
     existing.notes = order.notes;
     existing.customerName = order.customerName;
+    existing.branchId = order.branchId ?? undefined;
 
     // Simplificación: borrar items existentes y re-insertar.
     // Suficiente para MVP; cuando crezca, hacer diff.
@@ -186,6 +188,7 @@ export class TypeormOrderRepository implements OrderRepositoryPort {
       code: row.code,
       customerId: row.customerId,
       customerName: row.customerName,
+      branchId: row.branchId ?? undefined,
       status: row.status,
       total: Number(row.total),
       paid: Number(row.paid),

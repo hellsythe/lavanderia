@@ -25,6 +25,7 @@ import {
   type OrderRepositoryPort,
 } from './ports/order-repository.port';
 import { ServicesService } from '../services/services.service';
+import { BranchesService } from '../branches/branches.service';
 
 /**
  * OrdersService — use cases.
@@ -43,6 +44,7 @@ export class OrdersService {
   constructor(
     @Inject(ORDER_REPOSITORY) private readonly orders: OrderRepositoryPort,
     private readonly servicesService: ServicesService,
+    private readonly branchesService: BranchesService,
   ) {}
 
   async create(input: CreateOrderInput, tenantId: string): Promise<Order> {
@@ -120,6 +122,13 @@ export class OrdersService {
     }
 
     const { total } = recomputeTotals(items);
+
+    // Resolver branchId: si el cliente lo mandó, usarlo; sino, auto-resolver main
+    let branchId = parsed.data.branchId;
+    if (!branchId) {
+      const main = await this.branchesService.findMain(tenantId);
+      branchId = main?.id;
+    }
 
     return this.orders.create({
       tenantId,

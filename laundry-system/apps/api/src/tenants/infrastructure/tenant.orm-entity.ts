@@ -36,16 +36,6 @@ export class TenantOrmEntity {
   @Column({ type: 'varchar', length: 20, nullable: true })
   fiscalTaxId!: string | null;
 
-  // ── Onboarding: sucursal (paso 2) ──────────────────────────────────────
-  @Column({ type: 'varchar', length: 120, nullable: true })
-  branchName!: string | null;
-
-  @Column({ type: 'varchar', length: 200, nullable: true })
-  branchAddress!: string | null;
-
-  @Column({ type: 'varchar', length: 30, nullable: true })
-  branchPhone!: string | null;
-
   // ── Onboarding: WhatsApp (paso 3) ──────────────────────────────────────
   @Column({ type: 'varchar', length: 30, nullable: true })
   whatsappPhone!: string | null;

@@ -12,6 +12,7 @@ import {
   LogOut,
   Package,
   Plus,
+  Store,
   Truck,
   Users,
 } from 'lucide-react';
@@ -41,6 +42,7 @@ const REPORTES: NavItem[] = [
 ];
 
 const CONFIG: NavItem[] = [
+  { href: '/sucursales', label: 'Sucursales', icon: <Store className="h-4 w-4" /> },
   { href: '/inventario', label: 'Inventario', icon: <Package className="h-4 w-4" /> },
   { href: '/configuracion', label: 'Configuración', icon: <Cog className="h-4 w-4" /> },
 ];
