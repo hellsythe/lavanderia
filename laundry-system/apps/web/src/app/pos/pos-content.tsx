@@ -28,6 +28,7 @@ import {
   CheckCircle2,
   CreditCard,
   Inbox,
+  Landmark,
   Plus,
   Printer,
   Receipt,
@@ -147,6 +148,13 @@ const PAYMENT_METHODS: Array<{
     shortLabel: 'Puntos',
     hint: 'Recompensas del cliente',
     Icon: Sparkles,
+  },
+  {
+    value: 'transfer',
+    label: 'Transferencia',
+    shortLabel: 'Transferencia',
+    hint: 'SPEI / depósito bancario',
+    Icon: Landmark,
   },
 ];
 
@@ -1288,7 +1296,7 @@ function PaymentLineEditor({
       </div>
 
       {/* Método */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         {PAYMENT_METHODS.map((m) => {
           const active = line.method === m.value;
           const Icon = m.Icon;
